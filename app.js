@@ -326,6 +326,8 @@ function openModal(item = null) {
         if (item.link_video) {
             document.getElementById('link_video').value = item.link_video;
             document.getElementById('link_video_download').value = item.link_video_download || '';
+            document.getElementById('ten_file').value = item.ten_file || '';
+            document.getElementById('drive_file_id').value = item.drive_file_id || '';
             document.getElementById('uploadDropZone').style.display = 'none';
             document.getElementById('videoPreviewContainer').style.display = 'block';
             document.getElementById('previewFileLink').href = item.link_video;
@@ -337,8 +339,7 @@ function openModal(item = null) {
                 document.getElementById('previewFileDownload').style.display = 'none';
             }
 
-            // Lấy tên file từ ghi chú để làm mầu, nếu không có để default
-            document.getElementById('previewFileName').innerText = "Video đính kèm";
+            document.getElementById('previewFileName').innerText = item.ten_file || "Video đính kèm";
         }
 
         document.getElementById('btnDeleteRecord').style.display = 'inline-block';
@@ -622,6 +623,8 @@ function updateUIWithFile(fileId, fileName) {
 
     document.getElementById('link_video').value = resultUrl;
     document.getElementById('link_video_download').value = downloadUrl;
+    document.getElementById('ten_file').value = fileName;
+    document.getElementById('drive_file_id').value = fileId;
     document.getElementById('previewFileName').innerText = fileName;
     document.getElementById('previewFileLink').href = resultUrl;
 
@@ -631,6 +634,24 @@ function updateUIWithFile(fileId, fileName) {
 
     showToast("Tải video thành công!");
     isUploading = false;
+
+    // Nếu đang sửa 1 record đã có, lưu ngay tên file + link vào Firebase
+    // (để khỏi quên bấm "Lưu lại" sau khi upload)
+    const currentId = (document.getElementById('editId')?.value || '').trim();
+    if (currentId) {
+        tiktokRef.child(currentId).update({
+            link_video: resultUrl,
+            link_video_download: downloadUrl,
+            ten_file: fileName,
+            drive_file_id: fileId,
+            cap_nhat_cuoi: new Date().toISOString()
+        }).then(() => {
+            showToast("Đã lưu tên file vào DB!");
+        }).catch((err) => {
+            console.error(err);
+            alert("Upload xong nhưng lỗi lưu DB: " + (err?.message || err));
+        });
+    }
 }
 
 /**
@@ -679,6 +700,8 @@ function removeUploadedVideo() {
     document.getElementById('videoInput').value = '';
     document.getElementById('link_video').value = '';
     document.getElementById('link_video_download').value = '';
+    document.getElementById('ten_file').value = '';
+    document.getElementById('drive_file_id').value = '';
 
     document.getElementById('uploadDropZone').style.display = 'block';
     document.getElementById('videoPreviewContainer').style.display = 'none';
@@ -713,6 +736,8 @@ function handleSaveVideo(e) {
         ghi_chu: document.getElementById('ghi_chu').value.trim(),
         link_video: document.getElementById('link_video').value,
         link_video_download: document.getElementById('link_video_download').value,
+        ten_file: document.getElementById('ten_file').value,
+        drive_file_id: document.getElementById('drive_file_id').value,
         cap_nhat_cuoi: new Date().toISOString()
     };
 
