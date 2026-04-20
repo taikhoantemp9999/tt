@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Quản trị Tài khoản - Khảo sát ATTT</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-database-compat.js"></script>
+
+    <style>
+        .page-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .account-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .account-table th,
+        .account-table td {
+            padding: 16px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .account-table th {
+            background: #f8fafc;
+            font-weight: 700;
+            color: #475569;
+        }
+
+        .role-badge {
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 700;
+        }
+
+        .role-admin {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        .role-editor {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+
+        .role-viewer {
+            background: #e0f2fe;
+            color: #075985;
+            border: 1px solid #bae6fd;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 0.9rem;
+            transition: 0.2s;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .btn-danger {
+            background: #fee2e2;
+            color: #b91c1c;
+            border: 1px solid #fecaca;
+        }
+
+        .btn-action {
+            background: transparent;
+            border: 1px solid #cbd5e1;
+            color: #334155;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.6);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #fff;
+            padding: 32px;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .modal-title {
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: #0f172a;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 600px) {
+
+            .account-table th,
+            .account-table td {
+                padding: 12px 8px;
+                font-size: 0.9rem;
+            }
+
+            .action-cell {
+                display: flex;
+                gap: 6px;
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="page-container">
+        <header
+            style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+            <div>
+                <h1 style="font-size: 1.5rem; font-weight: 800; color: #0f172a; margin-bottom: 4px;">Tài khoản Hệ thống
+                </h1>
+                <p style="color: #64748b; font-size: 0.95rem;">Chỉ quyền Quản trị mới được truy cập trang này.</p>
+            </div>
+            <div style="display:flex; gap: 8px;">
+                <button onclick="window.location.href='list.html'" class="btn"
+                    style="background:#f1f5f9; color:#334155; border:1px solid #cbd5e1;">&larr; Quay lại</button>
+                <button id="btnAddNewAccount" class="btn btn-primary">+ Thêm mới</button>
+            </div>
+        </header>
+
+        <div style="overflow-x: auto;">
+            <table class="account-table">
+                <thead>
+                    <tr>
+                        <th>Tài khoản</th>
+                        <th>Mật khẩu</th>
+                        <th>Vai trò</th>
+                        <th>Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody id="accountTableBody">
+                    <tr>
+                        <td colspan="4" style="text-align:center; padding: 40px; color:#64748b;">Đang tải danh sách...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modal form -->
+    <div id="accountModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title" id="modalTitle">Thêm Tài khoản</div>
+            <form id="accountForm">
+                <input type="hidden" id="editOriginalUsername">
+                <div class="input-group" style="margin-bottom: 16px;">
+                    <label
+                        style="display:block; margin-bottom:6px; font-weight:600; color:#334155; font-size:0.9rem;">Tên
+                        đăng nhập</label>
+                    <input type="text" id="accUsername" required
+                        style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px;">
+                </div>
+                <div class="input-group" style="margin-bottom: 16px;">
+                    <label
+                        style="display:block; margin-bottom:6px; font-weight:600; color:#334155; font-size:0.9rem;">Mật
+                        khẩu</label>
+                    <input type="text" id="accPassword" required
+                        style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px;">
+                </div>
+                <div class="input-group" style="margin-bottom: 24px;">
+                    <label
+                        style="display:block; margin-bottom:6px; font-weight:600; color:#334155; font-size:0.9rem;">Vai
+                        trò</label>
+                    <select id="accRole" required
+                        style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-family: inherit; font-size: 0.95rem;">
+                        <option value="viewer">Chỉ xem (Viewer)</option>
+                        <option value="editor">Khai báo (Editor)</option>
+                        <option value="admin">Quản trị (Admin)</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <button type="button" id="btnCancelModal" class="btn"
+                        style="background:#f1f5f9; color:#334155; flex: 1;">Hủy</button>
+                    <button type="submit" class="btn btn-primary" style="flex: 2;">Lưu tài khoản</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Cần load auth.js TRƯỚC tk.js để có requireAuth -->
+    <script src="auth.js?v=20260317"></script>
+    <script src="tk.js?v=20260317"></script>
+</body>
+
+</html>

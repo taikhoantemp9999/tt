@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Đăng nhập - Khảo sát ATTT</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css" />
+    <style>
+        .login-wrap {
+            max-width: 520px;
+            margin: 0 auto;
+            padding-top: 40px;
+        }
+
+        .login-card {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-md);
+            padding: 20px;
+        }
+
+        .login-title {
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: var(--primary);
+            margin-bottom: 6px;
+        }
+
+        .login-desc {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 16px;
+        }
+
+        .login-row {
+            display: flex;
+            gap: 12px;
+            flex-direction: column;
+        }
+
+        .login-btn {
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            padding: 12px 14px;
+            border-radius: 10px;
+            font-weight: 800;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        .login-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .login-error {
+            display: none;
+            margin-top: 10px;
+            background: #fee2e2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            padding: 10px 12px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .hint {
+            margin-top: 14px;
+            color: #64748b;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .hint b {
+            color: #334155;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <div class="login-wrap">
+            <div class="login-card">
+                <div class="login-title">Đăng nhập</div>
+                <div class="login-desc">Đăng nhập để xem danh sách khách hàng và thao tác khảo sát.</div>
+
+                <form id="loginForm" class="login-row">
+                    <div class="input-group">
+                        <label for="username">Tài khoản</label>
+                        <input id="username" type="text" autocomplete="username" placeholder="khaosat hoặc xem"
+                            required />
+                    </div>
+                    <div class="input-group">
+                        <label for="password">Mật khẩu</label>
+                        <input id="password" type="password" autocomplete="current-password" placeholder="Nhập mật khẩu"
+                            required />
+                    </div>
+                    <button id="btnLogin" class="login-btn" type="submit">Đăng nhập</button>
+                    <div id="loginError" class="login-error"></div>
+                </form>
+
+                <div class="hint">
+                    - <b>khaosat</b>: có quyền thêm/sửa/xóa<br />
+                    - <b>xem</b>: chỉ xem danh sách & chi tiết
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-database-compat.js"></script>
+    <script src="auth.js?v=20260317"></script>
+    <script src="login.js?v=20260317"></script>
+</body>
+
+</html>

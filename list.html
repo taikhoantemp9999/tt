@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Danh sách khách hàng - Khảo sát ATTT</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css" />
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-database-compat.js"></script>
+
+    <style>
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .role-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: #fff;
+            font-weight: 800;
+            color: #334155;
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }
+
+        .logout-btn {
+            background: #0f172a;
+            color: #fff;
+            border: none;
+            padding: 10px 12px;
+            border-radius: 10px;
+            font-weight: 800;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .list-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+
+        .primary-small {
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            padding: 10px 12px;
+            border-radius: 10px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .card-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .muted {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-top: 4px;
+        }
+
+        .btns {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .mini-btn {
+            border: 1px solid var(--border);
+            background: #fff;
+            color: #334155;
+            padding: 8px 10px;
+            border-radius: 10px;
+            font-weight: 800;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .mini-btn.danger {
+            border-color: #fecaca;
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .mini-btn.primary {
+            border-color: rgba(79, 70, 229, 0.25);
+            background: var(--primary-light);
+            color: var(--primary);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="header-content">
+                <h1>Danh sách khách hàng</h1>
+                <p>Chọn khách hàng để xem chi tiết hoặc chỉnh sửa khảo sát.</p>
+            </div>
+        </header>
+
+        <main>
+            <div class="topbar">
+                <div id="roleBadge" class="role-badge">Đang tải...</div>
+                <button id="btnLogout" class="logout-btn" type="button">Đăng xuất</button>
+            </div>
+
+            <div id="editorActions" class="list-actions">
+                <button id="btnAddNew" class="primary-small" type="button" style="display:none;">+ Thêm mới khảo sát</button>
+                <a href="thongke.html" id="btnStats" class="primary-small" style="background:#0369a1; text-decoration:none; display:inline-flex; align-items:center; gap:8px;">📊 Thống kê</a>
+                <button id="btnManageMaterials" class="primary-small" style="background:#0284c7; display:none;"
+                    type="button">Quản trị Danh mục</button>
+                <button id="btnManageUsers" class="primary-small" style="background:#0f172a; display:none;"
+                    type="button">Quản trị Tài khoản</button>
+                <button id="btnBackup" class="primary-small" style="background:#059669; display:none;"
+                    type="button">💾 Backup Database</button>
+            </div>
+
+            <!-- Thanh tìm kiếm và Lọc -->
+            <div class="search-container search-filter-container" style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                <input type="text" id="searchInput" placeholder="🔍 Tìm theo tên đơn vị/xã..." 
+                    style="flex: 1; min-width: 200px; padding: 12px 16px; border: 1px solid var(--border); border-radius: 12px; font-size: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); outline: none; transition: all 0.2s; background: #fff;">
+                <select id="vnptFilter" style="padding: 12px 16px; border: 1px solid var(--border); border-radius: 12px; font-size: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); outline: none; background: #fff; min-width: 150px; cursor: pointer; color: #334155;">
+                    <option value="">Tất cả VNPT</option>
+                </select>
+                <select id="writerFilter" style="padding: 12px 16px; border: 1px solid var(--border); border-radius: 12px; font-size: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); outline: none; background: #fff; min-width: 160px; cursor: pointer; color: #334155;">
+                    <option value="">Tất cả Người viết</option>
+                </select>
+                <select id="surveyorFilter" style="padding: 12px 16px; border: 1px solid var(--border); border-radius: 12px; font-size: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); outline: none; background: #fff; min-width: 160px; cursor: pointer; color: #334155;">
+                    <option value="">Tất cả Người KS</option>
+                </select>
+                <select id="statusFilter" style="padding: 12px 16px; border: 1px solid var(--border); border-radius: 12px; font-size: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); outline: none; background: #fff; min-width: 220px; cursor: pointer; color: #334155;">
+                    <option value="">Tất cả Trạng thái</option>
+                    <optgroup label="Nhóm tùy chỉnh">
+                        <option value="group_overdue">Sắp hết hạn / Quá hạn</option>
+                        <option value="group_pending">Đang viết</option>
+                        <option value="group_completed">Đã xong</option>
+                        <option value="group_missing">Thiếu thông tin</option>
+                    </optgroup>
+                    <optgroup label="Trạng thái cụ thể" id="specificStatusGroup">
+                    </optgroup>
+                </select>
+                <button id="btnRefresh" class="primary-small" style="background:#475569; padding: 12px 20px; border-radius: 12px; display: inline-flex; align-items: center; gap: 8px;" type="button">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                    Làm mới
+                </button>
+            </div>
+
+            <div id="listSummary" style="margin-bottom: 16px; font-size: 0.95rem; color: #475569; font-weight: 500; display: none; align-items: center; justify-content: space-between;"></div>
+
+            <div id="listContainer">
+                <div class="empty-state">Đang tải dữ liệu...</div>
+            </div>
+        </main>
+    </div>
+
+    <script src="auth.js?v=20260317"></script>
+    <script src="list.js?v=20260317"></script>
+</body>
+
+</html>
