@@ -29,15 +29,26 @@
                 <div class="search-filter-container">
                     <input type="text" id="searchInput" placeholder="🔍 Tìm theo tiêu đề..." class="search-input">
                     <select id="statusFilter" class="filter-select">
-                        <option value="">Tất cả trạng thái</option>
+                        <option value="">-- Trạng thái --</option>
                         <option value="Video gốc">Video gốc</option>
                         <option value="Đã ghép text">Đã ghép text</option>
                         <option value="Đã ghép lồng tiếng">Đã ghép lồng tiếng</option>
                         <option value="Chờ đăng">Chờ đăng</option>
                         <option value="Đã đăng">Đã đăng</option>
                     </select>
+                    <select id="productFilter" class="filter-select">
+                        <option value="">-- Sản phẩm --</option>
+                    </select>
+                    <div class="filter-date-wrapper" style="display:flex; align-items:center; gap:5px; background:white; padding: 2px 10px; border-radius:12px; border:1px solid var(--border);">
+                        <span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Ngày:</span>
+                        <input type="date" id="dateFilter" class="filter-date" style="border:none; padding:5px; font-size:0.85rem; flex:1;">
+                    </div>
                 </div>
-                <div>
+                <div style="display: flex; gap: 10px;">
+                    <button id="btnManageProducts" class="secondary-btn" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+                        Sản phẩm
+                    </button>
                     <button id="btnAddNew" class="primary-btn pulse-glow" type="button">
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         Tạo Lịch Video Mới
@@ -61,6 +72,11 @@
         </main>
     </div>
 
+    <!-- Nút nổi thêm mới (FAB) cho Mobile -->
+    <button class="fab" id="btnAddNewFab" title="Thêm video mới">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+    </button>
+
     <!-- Modal Form (Add/Edit) -->
     <div id="formModal" class="modal">
         <div class="modal-content">
@@ -73,8 +89,15 @@
                     <input type="hidden" id="editId" name="id" value="">
                     
                     <div class="input-group">
-                        <label for="tieu_de">Tiêu đề / Chủ đề Video <span class="required">*</span></label>
-                        <input type="text" id="tieu_de" name="tieu_de" required placeholder="Gõ tiêu đề hấp dẫn hoặc ý tưởng chủ đề...">
+                        <label for="tieu_de">Tiêu đề / Chủ đề Video <span style="font-weight:400; color:var(--text-muted); font-size:0.8rem;">(Tùy chọn)</span></label>
+                        <input type="text" id="tieu_de" name="tieu_de" placeholder="Gõ tiêu đề hoặc để trống để tự tạo tên theo ngày...">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="san_pham">Sản phẩm liên kết</label>
+                        <select id="san_pham" name="san_pham">
+                            <option value="">-- Không đính kèm sản phẩm --</option>
+                        </select>
                     </div>
 
                     <div class="grid-2-col">
@@ -109,10 +132,16 @@
                         <!-- File Input -->
                         <div class="upload-area" id="uploadDropZone">
                             <input type="file" id="videoInput" accept="video/*, .exe, .rar, .zip" style="display: none;">
-                            <button type="button" id="btnSelectVideo" class="secondary-btn">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                                Chọn Video & Tải Lên
-                            </button>
+                            <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                                <button type="button" id="btnSelectVideo" class="secondary-btn">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                    Chọn từ máy
+                                </button>
+                                <button type="button" id="btnRecordVideoOpen" class="primary-btn" style="background:#ef4444; box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.2);">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 6px;"><circle cx="12" cy="12" r="10"></circle></svg>
+                                    Quay Video Trực tiếp
+                                </button>
+                            </div>
                             <div class="upload-info">Hỗ trợ các file (dưới 35MB). <br><span style="color:#ef4444; font-weight: 600;">Giới hạn upload qua GAS: ~35MB</span></div>
                         </div>
 
@@ -157,6 +186,62 @@
                         </div>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Quay Video -->
+    <div id="recordingModal" class="modal">
+        <div class="modal-content" style="max-width: 800px; padding: 20px;">
+            <div class="modal-header">
+                <h2>Quay Video Trực Tiếp</h2>
+                <button class="close-btn" id="btnCloseRecordingModal">&times;</button>
+            </div>
+            <div class="modal-body" style="text-align:center;">
+                <div class="camera-container" style="position:relative; background:#000; border-radius:12px; overflow:hidden; aspect-ratio: 9/16; max-height: 60vh; margin: 0 auto 20px;">
+                    <video id="recordPreview" autoplay muted playsinline style="width:100%; height:100%; object-fit: cover;"></video>
+                    <div id="recordingIndicator" class="recording-dot" style="display:none;">REC</div>
+                    <div id="recordingTimer" style="position:absolute; bottom:20px; left:50%; transform:translateX(-50%); color:white; font-weight:bold; font-size:1.5rem; text-shadow:0 2px 4px rgba(0,0,0,0.5);">00:00</div>
+                </div>
+                
+                <div style="display:flex; justify-content:center; gap:15px;">
+                    <button type="button" id="btnStartRecording" class="primary-btn" style="background:#ef4444; width:80px; height:80px; border-radius:50%; padding:0; display:flex; align-items:center; justify-content:center;">
+                        <div style="width:30px; height:30px; background:white; border-radius:50%;"></div>
+                    </button>
+                    <button type="button" id="btnStopRecording" class="primary-btn" style="display:none; background:#1e293b; width:80px; height:80px; border-radius:50%; padding:0; display:flex; align-items:center; justify-content:center;">
+                        <div style="width:25px; height:25px; background:white; border-radius:4px;"></div>
+                    </button>
+                </div>
+                <p id="recordingStatusText" style="margin-top:15px; font-weight:500; color:var(--text-muted);">Sẵn sàng quay (Tối thiểu 20s, Tối đa 30s)</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Quản lý Sản phẩm -->
+    <div id="productModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Quản lý Sản phẩm</h2>
+                <button class="close-btn" id="btnCloseProductModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="productForm" style="display:flex; gap:10px; margin-bottom: 20px; align-items:flex-end;">
+                    <input type="hidden" id="edit_product_id" value="">
+                    <div style="flex: 1;">
+                        <label style="display:block; margin-bottom:4px; font-weight:600; font-size:0.9rem;">Tên Sản phẩm</label>
+                        <input type="text" id="new_product_name" required placeholder="Nhập tên sản phẩm..." style="width:100%; padding:10px; border:1px solid #e2e8f0; border-radius:8px;">
+                    </div>
+                    <div>
+                        <label style="display:block; margin-bottom:4px; font-weight:600; font-size:0.9rem;">Hoạt động</label>
+                        <input type="checkbox" id="new_product_active" checked style="width:20px; height:20px; cursor:pointer; margin-bottom: 8px;">
+                    </div>
+                    <button type="submit" id="btnSaveProduct" class="primary-btn" style="padding:10px 16px;">Thêm</button>
+                    <button type="button" id="btnCancelProductEdit" class="secondary-btn" style="padding:10px 16px; display:none;">Hủy</button>
+                </form>
+
+                <div id="productListContainer" style="max-height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
+                    <!-- Render product list here -->
+                </div>
             </div>
         </div>
     </div>

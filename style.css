@@ -28,7 +28,13 @@ body {
 .app-container {
     max-width: 1000px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 16px; /* Giảm nhẹ padding lề trên mobile */
+}
+
+@media (max-width: 600px) {
+    .app-container {
+        padding: 12px;
+    }
 }
 
 /* Header */
@@ -38,10 +44,24 @@ body {
     align-items: center;
     background: linear-gradient(135deg, #1e293b, #0f172a);
     color: white;
-    padding: 24px;
+    padding: 20px;
     border-radius: 16px;
-    margin-bottom: 24px;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+    position: sticky;
+    top: 10px;
+    z-index: 100;
+    backdrop-filter: blur(8px);
+    background: rgba(30, 41, 59, 0.95);
+}
+
+@media (max-width: 600px) {
+    .app-header {
+        padding: 16px;
+        flex-direction: column;
+        text-align: center;
+        gap: 12px;
+    }
 }
 
 .header-content h1 {
@@ -124,13 +144,20 @@ button {
 
 .search-filter-container {
     display: flex;
-    gap: 12px;
+    gap: 8px;
     flex: 1;
-    max-width: 600px;
+    max-width: 700px;
+}
+
+@media (max-width: 600px) {
+    .search-filter-container {
+        flex-wrap: wrap;
+    }
 }
 
 .search-input {
     flex: 1;
+    min-width: 140px;
     padding: 12px 16px;
     border: 1px solid var(--border);
     border-radius: 12px;
@@ -145,14 +172,28 @@ button {
 }
 
 .filter-select {
-    padding: 12px 16px;
+    padding: 12px 12px;
     border: 1px solid var(--border);
     border-radius: 12px;
-    font-size: 1rem;
+    font-size: 0.95rem;
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     outline: none;
-    min-width: 160px;
+    min-width: 120px;
     cursor: pointer;
+}
+
+@media (max-width: 600px) {
+    .filter-select, .filter-date-wrapper {
+        flex: 1;
+        min-width: calc(50% - 4px);
+    }
+}
+
+.filter-date {
+    outline: none;
+    cursor: pointer;
+    color: var(--text-main);
+    font-weight: 500;
 }
 
 /* Grid & Cards */
@@ -246,6 +287,19 @@ button {
     border-top: 1px solid var(--border);
 }
 
+@media (max-width: 600px) {
+    .video-card {
+        padding: 16px;
+    }
+    .card-title {
+        font-size: 1rem;
+    }
+    .card-note {
+        font-size: 0.85rem;
+        padding: 8px;
+    }
+}
+
 .btn-icon {
     background: none;
     border: none;
@@ -286,14 +340,25 @@ button {
 .modal-content {
     background-color: #fff;
     margin: auto;
-    padding: 30px;
+    padding: 24px;
     border-radius: 20px;
-    width: 90%;
+    width: 95%;
     max-width: 650px;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
     position: relative;
-    max-height: 90vh;
+    max-height: 95vh;
     overflow-y: auto;
+}
+
+@media (max-width: 600px) {
+    .modal-content {
+        padding: 16px;
+        border-radius: 16px 16px 0 0;
+        position: fixed;
+        bottom: 0;
+        width: 100%;
+        max-height: 90vh;
+    }
 }
 
 .modal-header {
@@ -542,15 +607,87 @@ button {
     100% { box-shadow: 0 0 0 0 rgba(79,70,229,0); }
 }
 
-/* Responsive */
+/* Recording styles */
+.recording-dot {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: #ef4444;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-weight: 800;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    animation: blink 1s infinite;
+}
+
+.recording-dot::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    background: white;
+    border-radius: 50%;
+}
+
+@keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0; }
+    100% { opacity: 1; }
+}
+
+/* Responsive & Mobile-first tweaks */
 @media (max-width: 768px) {
     .grid-2-col {
         grid-template-columns: 1fr;
     }
     .topbar {
-        flex-direction: column;
+        flex-direction: column-reverse;
     }
     .search-filter-container {
         max-width: 100%;
     }
+    .header-actions {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+    }
+}
+
+/* Floating Action Button */
+.fab {
+    display: none;
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: white;
+    box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.4);
+    border: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 99;
+}
+
+@media (max-width: 768px) {
+    .fab {
+        display: flex;
+    }
+    #btnAddNew {
+        display: none; /* Ẩn nút cũ trên mobile, dùng FAB */
+    }
+}
+
+.fab:active {
+    transform: scale(0.9);
+}
+
+.fab svg {
+    width: 30px;
+    height: 30px;
 }
