@@ -1,483 +1,162 @@
 <!DOCTYPE html>
 <html lang="vi">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Khảo sát ATTT Cấp độ 2</title>
-    <meta name="description" content="Công cụ thu thập dữ liệu an toàn thông tin cấp xã.">
-    <!-- Google Fonts cho Typography hiện đại -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
-    <!-- Thư viện SheetJS xuất Excel -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Quản lý Đăng Video TikTok</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css" />
 
-    <!-- Firebase SDK (Sử dụng Compat version cho dễ dùng với code JS thuần hiện tại) -->
+    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-database-compat.js"></script>
 </head>
-
 <body>
     <div class="app-container">
         <!-- Header -->
         <header class="app-header">
             <div class="header-content">
-                <h1>Khảo sát ATTT Cấp độ 2</h1>
-                <p>Công cụ thu thập dữ liệu tối ưu cho di động</p>
+                <h1>Quản lý Video TikTok ✨</h1>
+                <p>Theo dõi lịch trình đăng và trạng thái edit video</p>
             </div>
             <div class="header-actions">
-                <button type="button" id="btnBackToListGlobal" class="action-btn"
-                    style="background:#64748b; color:#fff; border: 1px solid #475569;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="19" y1="12" x2="5" y2="12"></line>
-                        <polyline points="12 19 5 12 12 5"></polyline>
-                    </svg>
-                    Quay lại
-                </button>
-                <button type="button" id="btnManageUsersGlobal" class="action-btn"
-                    style="display:none; background:#0f172a; color:#fff; border: 1px solid #1e293b;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                        <circle cx="9" cy="7" r="4"></circle>
-                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                    </svg>
-                    Quản trị
-                </button>
-                <button type="button" id="btnViewList" class="action-btn view-btn">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="8" y1="6" x2="21" y2="6"></line>
-                        <line x1="8" y1="12" x2="21" y2="12"></line>
-                        <line x1="8" y1="18" x2="21" y2="18"></line>
-                        <line x1="3" y1="6" x2="3.01" y2="6"></line>
-                        <line x1="3" y1="12" x2="3.01" y2="12"></line>
-                        <line x1="3" y1="18" x2="3.01" y2="18"></line>
-                    </svg>
-                    Danh sách (<span id="countBadge">0</span>)
-                </button>
-                <button type="button" id="btnExport" class="action-btn export-btn">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
-                    Excel
-                </button>
             </div>
         </header>
 
-        <!-- Network Status Indicator -->
-        <div id="networkStatus"
-            style="display: none; background: #ef4444; color: white; text-align: center; padding: 6px; font-size: 0.85rem; font-weight: 500; position: sticky; top: 0; z-index: 1000;">
-            ⚠️ Đang ngoại tuyến (Offline). Dữ liệu sẽ được lưu tạm vào máy.
-        </div>
-
-        <!-- Main Form -->
         <main>
-            <form id="surveyForm" class="survey-form">
-                <input type="hidden" id="editId" name="id" value="">
-
-                <div id="editAlert" class="edit-alert" style="display: none;">
-                    <div>
-                        <span>Đang ở chế độ chỉnh sửa đơn vị <b id="editingName"></b></span>
-                    </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button type="button" id="btnBackToCustomerList" class="action-btn"
-                            style="padding: 4px 12px; font-size: 0.8rem; background:#0f172a;">Về danh sách</button>
-                        <button type="button" id="btnViewDetailCurrent" class="action-btn view-btn"
-                            style="padding: 4px 12px; font-size: 0.8rem;">Xem chi tiết</button>
-                        <button type="button" id="btnCancelEdit" class="cancel-edit-btn">Hủy & Thêm mới</button>
-                    </div>
+            <!-- Controls Bar -->
+            <div class="topbar">
+                <div class="search-filter-container">
+                    <input type="text" id="searchInput" placeholder="🔍 Tìm theo tiêu đề..." class="search-input">
+                    <select id="statusFilter" class="filter-select">
+                        <option value="">Tất cả trạng thái</option>
+                        <option value="Video gốc">Video gốc</option>
+                        <option value="Đã ghép text">Đã ghép text</option>
+                        <option value="Đã ghép lồng tiếng">Đã ghép lồng tiếng</option>
+                        <option value="Chờ đăng">Chờ đăng</option>
+                        <option value="Đã đăng">Đã đăng</option>
+                    </select>
                 </div>
-
-                <!-- Section 1: Thông tin chung -->
-                <section class="form-section group-card">
-                    <h2>I. Thông tin chung</h2>
-                        <div class="input-group">
-                            <label for="don_vi_khao_sat">Đơn vị được khảo sát <span class="required">*</span></label>
-                            <input type="text" id="don_vi_khao_sat" name="don_vi_khao_sat" required
-                                placeholder="Tên đơn vị/tổ chức">
-                        </div>
-
-                        <!-- Administrative Info moved here -->
-                        <div class="input-group">
-                            <label for="ngay_khao_sat">Ngày khảo sát <span class="required">*</span></label>
-                            <input type="date" id="ngay_khao_sat" name="quan_ly_ho_so.ngay_khao_sat" required>
-                        </div>
-                        <div class="input-group">
-                            <label for="nguoi_khao_sat">Người khảo sát <span class="required">*</span></label>
-                            <select id="nguoi_khao_sat" name="quan_ly_ho_so.nguoi_khao_sat" required
-                                style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; background-color: #F9FAFB;">
-                                <option value="">-- Chọn người khảo sát --</option>
-                            </select>
-                        </div>
-                        <div class="input-group">
-                            <label for="nguoi_viet_ho_so">Người viết hồ sơ</label>
-                             <select id="nguoi_viet_ho_so" name="quan_ly_ho_so.nguoi_viet_ho_so"
-                                 style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; background-color: #F9FAFB;">
-                                 <option value="">-- Chọn người viết hồ sơ --</option>
-                             </select>
-                        </div>
-                        <div class="input-group">
-                            <label for="han_viet_ho_so">Hạn viết hồ sơ <span class="required">*</span></label>
-                            <input type="date" id="han_viet_ho_so" name="quan_ly_ho_so.han_viet_ho_so" required>
-                        </div>
-                        <div class="input-group">
-                            <label for="site_survey">Site <span class="required">*</span></label>
-                            <select id="site_survey" name="quan_ly_ho_so.site" required
-                                style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; background-color: #F9FAFB;">
-                                <option value="">-- Chọn Site --</option>
-                                <option value="PTO">PTO</option>
-                                <option value="HBH">HBH</option>
-                                <option value="VPC">VPC</option>
-                            </select>
-                        </div>
-                        <div class="input-group">
-                            <label for="vnpt_khu_vuc">VNPT Khu Vực <span class="required">*</span></label>
-                            <select id="vnpt_khu_vuc" name="quan_ly_ho_so.vnpt_khu_vuc" required
-                                style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; background-color: #F9FAFB;">
-                                <option value="">-- Chọn VNPT Khu Vực --</option>
-                            </select>
-                        </div>
-                        <div class="input-group">
-                            <label for="tinh_trang">Tình trạng</label>
-                            <select id="tinh_trang" name="quan_ly_ho_so.tinh_trang"
-                                style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; background-color: #F9FAFB;">
-                                <option value="Mới khảo sát chưa phân công">Mới khảo sát chưa phân công</option>
-                                <option value="Đã tiếp xúc chờ khách hàng phản hồi">Đã tiếp xúc chờ khách hàng phản hồi</option>
-                                <option value="Đã phân công">Đã phân công</option>
-                                <option value="Hồ sơ chưa đạt, yêu cầu viết lại">Hồ sơ chưa đạt, yêu cầu viết lại</option>
-                                <option value="Chờ bộ mẫu, sẽ viết sau">Chờ bộ mẫu, sẽ viết sau</option>
-                                <option value="Hồ sơ thiếu thông tin không viết được">Hồ sơ thiếu thông tin không viết được</option>
-                                <option value="Đã gửi cho quản lý địa bàn">Đã gửi cho quản lý địa bàn</option>
-                                <option value="Đã gửi lại hồ sơ cho VNPT Khu Vực">Đã gửi lại hồ sơ cho VNPT Khu Vực</option>
-                                <option value="Đã gửi cho CA">Đã gửi cho CA</option>
-                                <option value="Công an đã phê duyệt">Công an đã phê duyệt</option>
-                                <option value="Công an trả lại">Công an trả lại</option>
-                            </select>
-                        </div>
-                        <div class="input-group">
-                            <label for="ghi_chu_viet_ho_so">Ghi chú viết hồ sơ</label>
-                            <textarea id="ghi_chu_viet_ho_so" name="quan_ly_ho_so.ghi_chu_viet_ho_so"
-                                style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; background-color: #F9FAFB; min-height: 80px;"></textarea>
-                        </div>
-                    <div id="buildingSurveyWrapper"
-                        style="display: none; margin-top: 16px; background: #e0f2fe; padding: 12px; border-radius: 8px; border: 1px dashed #0284c7;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <strong style="color: #0284c7; font-size: 0.95rem;">Sơ đồ Tòa nhà & Phòng ban</strong>
-                                <p style="font-size: 0.8rem; color: #475569; margin: 2px 0 0 0;">Quản lý vị trí thiết bị
-                                    chi tiết</p>
-                            </div>
-                            <div style="display:flex; gap:8px; align-items:center;">
-                                <button type="button" id="btnToggleBuildingPreview" class="action-btn"
-                                    style="background:#f1f5f9; color:#0284c7; border:1px solid #cbd5e1; font-size:0.85rem; padding:8px 12px; border-radius:8px; font-weight:700;">Xem
-                                    nhanh</button>
-                                <button type="button" id="btnOpenCampusLayout" class="action-btn"
-                                    style="background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; font-size:0.85rem; padding:8px 12px; border-radius:8px; font-weight:800;">Bố
-                                    trí tòa nhà</button>
-                                <button type="button" id="btnOpenBuildingSurvey" class="primary-btn"
-                                    style="width: auto; padding: 8px 16px; font-size: 0.85rem;">Mở Sơ đồ</button>
-                            </div>
-                        </div>
-                        <div id="buildingPreviewContainer" class="bldg-preview" style="display:none; margin-top: 12px;">
-                            <div class="empty-state" style="padding:10px;">Chưa có dữ liệu sơ đồ tòa nhà.</div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Section 2: Hạ tầng thiết bị -->
-                <section class="form-section group-card">
-                    <h2>II. Hạ tầng thiết bị</h2>
-                    <div class="grid-2-col">
-                        <div class="input-group">
-                            <label for="tong_may_ban">Tổng máy bàn</label>
-                            <input type="number" id="tong_may_ban" name="ha_tang_thiet_bi.tong_may_ban" placeholder="0"
-                                min="0">
-                        </div>
-                        <div class="input-group">
-                            <label for="tong_laptop">Tổng laptop</label>
-                            <input type="number" id="tong_laptop" name="ha_tang_thiet_bi.tong_laptop" placeholder="0"
-                                min="0">
-                        </div>
-                        <div class="input-group">
-                            <label for="so_may_ram_lon_hon_4G">Số máy RAM > 4G</label>
-                            <input type="number" id="so_may_ram_lon_hon_4G"
-                                name="ha_tang_thiet_bi.so_may_ram_lon_hon_4G" placeholder="0" min="0">
-                        </div>
-                        <div class="input-group">
-                            <label for="so_duong_internet">Số đường internet</label>
-                            <input type="number" id="so_duong_internet" name="ha_tang_thiet_bi.so_duong_internet"
-                                placeholder="0" min="0">
-                        </div>
-                        <div class="input-group">
-                            <label for="so_camera">Số Camera</label>
-                            <input type="text" id="so_camera" name="ha_tang_thiet_bi.so_camera" placeholder="VD: 10">
-                        </div>
-                        <div class="input-group">
-                            <label for="cai_phan_mem_antivirus">Cài phần mềm Antivirus</label>
-                            <input type="text" id="cai_phan_mem_antivirus"
-                                name="ha_tang_thiet_bi.cai_phan_mem_antivirus" placeholder="Có/Không hoặc Tên PM">
-                        </div>
-                        <div class="input-group">
-                            <label for="so_luong_cai_smartIR">Số lượng cài SmartIR</label>
-                            <input type="number" id="so_luong_cai_smartIR" name="ha_tang_thiet_bi.so_luong_cai_smartIR"
-                                placeholder="0" min="0">
-                        </div>
-                    </div>
-
-                    <div class="checkbox-group mt-3">
-                        <label class="custom-checkbox">
-                            <input type="checkbox" name="ha_tang_thiet_bi.he_thong_mang_lan">
-                            <span class="checkmark"></span>
-                            Hệ thống mạng Lan
-                        </label>
-                        <label class="custom-checkbox">
-                            <input type="checkbox" name="ha_tang_thiet_bi.co_thi_cong_mang_lan">
-                            <span class="checkmark"></span>
-                            Có thi công mạng Lan
-                        </label>
-                        <label class="custom-checkbox">
-                            <input type="checkbox" name="ha_tang_thiet_bi.tuong_lua">
-                            <span class="checkmark"></span>
-                            Tường lửa
-                        </label>
-                        <label class="custom-checkbox">
-                            <input type="checkbox" id="co_trien_khai_tuong_lua"
-                                name="ha_tang_thiet_bi.co_trien_khai_tuong_lua">
-                            <span class="checkmark"></span>
-                            Có triển khai tường lửa
-                        </label>
-                    </div>
-
-                    <!-- Input cho thiết bị tường lửa (ẩn đi mặc định) -->
-                    <div id="firewallDeviceWrapper" class="input-group"
-                        style="display: none; margin-top: 12px; background: rgba(2, 132, 199, 0.05); padding: 12px; border-radius: 8px; border-left: 3px solid #0284c7;">
-                        <label style="color: #0284c7; font-weight: 600;">Thiết bị Tường lửa đang triển khai</label>
-                        <input type="text" id="thiet_bi_tuong_lua" name="ha_tang_thiet_bi.thiet_bi_tuong_lua"
-                            list="firewallSuggestions" placeholder="VD: Fortinet, Cisco ASA, Sophos...">
-                        <datalist id="firewallSuggestions">
-                            <option value="Fortinet/FortiGate">
-                            <option value="Cisco ASA / Firepower">
-                            <option value="Sophos XG / SG">
-                            <option value="Palo Alto Networks">
-                            <option value="Check Point">
-                            <option value="pfSense (Mã nguồn mở)">
-                        </datalist>
-                    </div>
-                </section>
-
-                <!-- Section 3: Hệ thống thông tin -->
-                <section class="form-section group-card">
-                    <div
-                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <h2 style="margin: 0;">III. Các hệ thống thông tin khai thác</h2>
-                        <button type="button" id="btnManageHttt" class="action-btn"
-                            style="font-size: 0.85em; padding: 6px 12px; border-radius: 4px;">Quản lý</button>
-                    </div>
-                    <p class="section-desc">Chọn các hệ thống đang được cấp quyền, sử dụng:</p>
-                    <div class="checkbox-list" id="htttList">
-                        <!-- Rendered via JS -->
-                    </div>
-                </section>
-
-                <!-- Section 4: Liên hệ -->
-                <section class="form-section group-card">
-                    <h2>IV. Thông tin liên hệ</h2>
-
-                    <h3 class="sub-heading">1. Đầu mối cung cấp thông tin</h3>
-                    <div class="input-group">
-                        <label>Họ tên</label>
-                        <input type="text" name="thong_tin_lien_he.dau_moi_cung_cap.ho_ten" placeholder="Nguyễn Văn A">
-                    </div>
-                    <div class="grid-2-col">
-                        <div class="input-group">
-                            <label>Số điện thoại</label>
-                            <input type="tel" name="thong_tin_lien_he.dau_moi_cung_cap.so_dien_thoai"
-                                placeholder="09xxxx">
-                        </div>
-                        <div class="input-group">
-                            <label>Đơn vị</label>
-                            <input type="text" name="thong_tin_lien_he.dau_moi_cung_cap.don_vi" placeholder="Phòng VH">
-                        </div>
-                    </div>
-
-                    <h3 class="sub-heading">2. Đơn vị vận hành (UBND xã)</h3>
-                    <div class="grid-2-col">
-                        <div class="input-group">
-                            <label>Người đại diện</label>
-                            <input type="text" name="thong_tin_lien_he.don_vi_van_hanh.nguoi_dai_dien"
-                                placeholder="Ngô Văn Toàn">
-                        </div>
-                        <div class="input-group">
-                            <label>Chức vụ</label>
-                            <input type="text" name="thong_tin_lien_he.don_vi_van_hanh.chuc_vu" placeholder="CT. UBND">
-                        </div>
-                    </div>
-                    <div class="input-group">
-                        <label>Địa chỉ</label>
-                        <input type="text" name="thong_tin_lien_he.don_vi_van_hanh.dia_chi">
-                    </div>
-                    <div class="grid-2-col">
-                        <div class="input-group">
-                            <label>Số điện thoại</label>
-                            <input type="tel" name="thong_tin_lien_he.don_vi_van_hanh.so_dien_thoai">
-                        </div>
-                        <div class="input-group">
-                            <label>Thư điện tử</label>
-                            <input type="email" name="thong_tin_lien_he.don_vi_van_hanh.thu_dien_tu">
-                        </div>
-                    </div>
-
-                    <h3 class="sub-heading">3. Công an xã</h3>
-                    <div class="grid-2-col">
-                        <div class="input-group">
-                            <label>Họ tên Trưởng CA</label>
-                            <input type="text" name="thong_tin_lien_he.cong_an_xa.ho_ten">
-                        </div>
-                        <div class="input-group">
-                            <label>Số điện thoại CA</label>
-                            <input type="tel" name="thong_tin_lien_he.cong_an_xa.so_dien_thoai">
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Section 5: Đề xuất -->
-                <section class="form-section group-card" id="sectionDeXuat">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <h2 style="margin: 0;">V. Đề xuất giải pháp / Ghi chú</h2>
-                        <button type="button" id="btnExportWord" class="action-btn export-btn" style="padding: 6px 12px; font-size: 0.85rem; background: #2563eb; color: #fff; border: 1px solid #1d4ed8;">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                <polyline points="14 2 14 8 20 8"></polyline>
-                                <line x1="16" y1="13" x2="8" y2="13"></line>
-                                <line x1="16" y1="17" x2="8" y2="17"></line>
-                                <polyline points="10 9 9 9 8 9"></polyline>
-                            </svg>
-                            Xuất File Word
-                        </button>
-                    </div>
-                    <p class="section-desc">Ghi lại các đánh giá chuyên môn, ghi chú phát sinh hoặc các giải pháp kỹ thuật cần đề xuất thêm cho đơn vị (Xã, Phường...):</p>
-                    <div class="input-group">
-                        <textarea id="de_xuat_textarea" name="de_xuat" rows="8"
-                            placeholder="Nhập nội dung đề xuất tại đây..."
-                            style="width: 100%; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; font-family: inherit; resize: vertical; margin-top: 8px;"></textarea>
-                    </div>
-                    <div style="font-size: 0.85rem; color: #475569; margin-top: 8px; margin-bottom: 4px; font-weight: 600;">Gợi ý phổ biến (Chạm để tự điền):</div>
-                    <div id="quickDeXuatSuggestionsBox" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;"></div>
-
-                    <div style="margin-top: 24px; border-top: 1px dashed #cbd5e1; padding-top: 16px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                            <h3 style="margin: 0; font-size: 1.05rem; color: #0f172a;">Dự toán thiết bị đề xuất</h3>
-                            <button type="button" id="btnAddEstimate" class="action-btn" style="background: #f1f5f9; color: #0369a1; border: 1px solid #bae6fd; font-size: 0.85rem; padding: 6px 12px; font-weight: 600;">+ Thêm thiết bị</button>
-                        </div>
-                        <div style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
-                            <table style="width: 100%; border-collapse: collapse; min-width: 500px;" id="estimateTable">
-                                <thead>
-                                    <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;">
-                                        <th style="padding: 10px; text-align: left; font-size: 0.85rem; color: #475569; font-weight: 600;">Thiết bị / Vật tư (chọn trong DM)</th>
-                                        <th style="padding: 10px; text-align: center; font-size: 0.85rem; color: #475569; font-weight: 600; width: 80px;">SL</th>
-                                        <th style="padding: 10px; text-align: right; font-size: 0.85rem; color: #475569; font-weight: 600; width: 120px;">Đơn giá</th>
-                                        <th style="padding: 10px; text-align: right; font-size: 0.85rem; color: #475569; font-weight: 600; width: 140px;">Thành tiền</th>
-                                        <th style="padding: 10px; width: 40px;"></th>
-                                    </tr>
-                                </thead>
-                                <tbody id="estimateTableBody">
-                                    <tr id="emptyEstimateRow"><td colspan="5" style="text-align:center; padding: 16px; color:#94a3b8; font-size:0.9rem;">Chưa có thiết bị nào.</td></tr>
-                                </tbody>
-                                <tfoot>
-                                    <tr style="background: #f1f5f9; border-top: 2px solid #cbd5e1;">
-                                        <td colspan="3" style="padding: 12px 10px; text-align: right; font-weight: 700; color: #0f172a;">Tổng cộng:</td>
-                                        <td style="padding: 12px 10px; text-align: right; font-weight: 800; color: #b91c1c; font-size: 1.1rem;" id="estimateTotalAmount">0</td>
-                                        <td></td>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Section 6: Hình ảnh hiện trường -->
-                <section class="form-section group-card">
-                    <h2>VI. Hình ảnh hiện trường</h2>
-                    <p class="section-desc">Tải lên các hình ảnh thực tế tại đơn vị (Tủ rack, thiết bị, phòng máy...) và
-                        thêm mô tả:</p>
-
-                    <div class="image-upload-container">
-                        <input type="file" id="imageInput" accept="image/*" style="display: none;" multiple>
-                        <div id="imageGrid" class="image-grid">
-                            <!-- Placeholder for adding images -->
-                            <div id="btnSelectImages" class="upload-placeholder">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
-                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                    stroke-linejoin="round">
-                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                                    <polyline points="21 15 16 10 5 21"></polyline>
-                                </svg>
-                                <span style="font-size: 0.9rem; font-weight: 500;">Thêm hình ảnh</span>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <div class="submit-wrapper">
-                    <button type="submit" class="submit-btn" id="btnSubmit">
-                        <span id="submitText">Lưu Khảo Sát Mới</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                            <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                            <polyline points="7 3 7 8 15 8"></polyline>
-                        </svg>
+                <div>
+                    <button id="btnAddNew" class="primary-btn pulse-glow" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        Tạo Lịch Video Mới
                     </button>
                 </div>
-            </form>
+            </div>
+
+            <div id="loadingState" class="empty-state">
+                <div class="spinner"></div>
+                <p>Đang tải dữ liệu từ Firebase...</p>
+            </div>
+
+            <!-- List Container Grid -->
+            <div id="videoListContainer" class="video-grid" style="display: none;">
+                <!-- Video Cards will be placed here -->
+            </div>
+            
+            <div id="noDataState" class="empty-state" style="display: none;">
+                <p>Chưa có video nào. Bấm 'Tạo Lịch Video Mới' để bắt đầu!</p>
+            </div>
         </main>
     </div>
 
-    <!-- Modal Danh Sách -->
-    <div id="listModal" class="modal">
+    <!-- Modal Form (Add/Edit) -->
+    <div id="formModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Danh sách khách hàng (<span id="modalCount"></span>)</h2>
+                <h2 id="modalTitle">Thêm Video Mới</h2>
                 <button class="close-btn" id="btnCloseModal">&times;</button>
             </div>
-            <div class="modal-body" id="listContainer">
-                <!-- Data rendered here -->
-            </div>
-            <div class="modal-footer">
-                <button type="button" id="btnClearData" class="delete-all-btn">Xóa tất cả</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal Quản Lý HTTT -->
-    <div id="manageHtttModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Quản lý Hệ thống khai thác</h2>
-                <button class="close-btn" id="btnCloseHtttModal">&times;</button>
-            </div>
             <div class="modal-body">
-                <div style="display: flex; gap: 8px; margin-bottom: 16px;">
-                    <input type="text" id="newHtttInput" placeholder="Nhập tên hệ thống mới..."
-                        style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                    <button type="button" id="btnAddHtttBtn" class="action-btn" style="padding: 0 16px;">Thêm
-                        mới</button>
-                </div>
-                <div id="manageHtttListContainer"
-                    style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto;">
-                    <!-- data rendered via JS -->
-                </div>
-                <div style="margin-top: 15px; font-size: 0.85em; color: gray;">
-                    * Lưu ý: Thêm hoặc xóa hệ thống tại đây sẽ cập nhật trực tiếp danh sách các ô checkbox hiển thị
-                    trong bản khảo sát.
-                </div>
+                <form id="videoForm">
+                    <input type="hidden" id="editId" name="id" value="">
+                    
+                    <div class="input-group">
+                        <label for="tieu_de">Tiêu đề / Chủ đề Video <span class="required">*</span></label>
+                        <input type="text" id="tieu_de" name="tieu_de" required placeholder="Gõ tiêu đề hấp dẫn hoặc ý tưởng chủ đề...">
+                    </div>
+
+                    <div class="grid-2-col">
+                        <div class="input-group">
+                            <label for="ngay_dang">Ngày đăng (Dự kiến) <span class="required">*</span></label>
+                            <input type="date" id="ngay_dang" name="ngay_dang" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="trang_thai">Trạng thái xử lý <span class="required">*</span></label>
+                            <select id="trang_thai" name="trang_thai" required>
+                                <option value="Video gốc">Dựng thô (Video gốc)</option>
+                                <option value="Đã ghép text">Đã ghép text</option>
+                                <option value="Đã ghép lồng tiếng">Đã ghép lồng tiếng</option>
+                                <option value="Chờ đăng" style="font-weight: bold; background:#fef08a">⏳ Chờ đăng</option>
+                                <option value="Đã đăng" style="font-weight: bold; color:green; background:#bbf7d0">✅ Đã đăng</option>
+                                <option value="Hủy / Bỏ qua">❌ Hủy / Bỏ qua</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="ghi_chu">Ghi chú (Tài nguyên, Kịch bản, Hashtag...)</label>
+                        <textarea id="ghi_chu" name="ghi_chu" rows="4" placeholder="Ví dụ: Link script, Link Capcut, #Hashtag dự kiến..."></textarea>
+                    </div>
+
+                    <!-- Video Upload Section -->
+                    <div class="upload-section">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <label style="margin:0; font-size: 0.95rem; font-weight: 600;">File Video đính kèm <span style="font-weight:400; color:#64748b; font-size: 0.8rem;">(Tùy chọn)</span></label>
+                        </div>
+                        
+                        <!-- File Input -->
+                        <div class="upload-area" id="uploadDropZone">
+                            <input type="file" id="videoInput" accept="video/*, .exe, .rar, .zip" style="display: none;">
+                            <button type="button" id="btnSelectVideo" class="secondary-btn">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                Chọn Video & Tải Lên
+                            </button>
+                            <div class="upload-info">Hỗ trợ các file (dưới 35MB). <br><span style="color:#ef4444; font-weight: 600;">Giới hạn upload qua GAS: ~35MB</span></div>
+                        </div>
+
+                        <!-- Progress Bar (Hidden by default) -->
+                        <div id="uploadProgressContainer" style="display: none; margin-top: 12px;">
+                            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 4px; color: #475569; font-weight: 500;">
+                                <span>Đang xử lý tải lên (Không tắt form)...</span>
+                            </div>
+                            <div class="progress-bar-bg">
+                                <div id="uploadProgressBar" class="progress-bar-fill"></div>
+                            </div>
+                        </div>
+
+                        <!-- Video Preview Box -->
+                        <div id="videoPreviewContainer" style="display: none;">
+                            <input type="hidden" id="link_video" name="link_video" value="">
+                            <input type="hidden" id="link_video_download" name="link_video_download" value="">
+                            
+                            <div class="video-preview-card">
+                                <div style="display:flex; align-items:center; gap: 10px; width: 100%;">
+                                    <div class="video-icon">🎥</div>
+                                    <div class="video-preview-info">
+                                        <div class="video-title" id="previewFileName">video_123.mp4</div>
+                                        <div class="video-link">
+                                            <a href="#" id="previewFileLink" target="_blank">Mở thẻ Drive</a> | 
+                                            <a href="#" id="previewFileDownload" target="_blank" style="color:#0284c7;">Tải xuống</a>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn-remove-video" id="btnRemoveVideo" title="Gỡ file đính kèm này">&times;</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer" style="margin-top: 24px; display: flex; justify-content: space-between;">
+                        <button type="button" class="cancel-edit-btn" id="btnDeleteRecord" style="display:none; border-color: #fecaca; color: #b91c1c; background: #fef2f2;">🗑️ Xóa tin này</button>
+                        <div style="display:flex; gap: 10px; margin-left: auto;">
+                            <button type="button" class="cancel-edit-btn" id="btnCancelForm">Hủy</button>
+                            <button type="submit" class="submit-btn" id="btnSaveForm" style="width: auto;">
+                                💾 Lưu lại
+                            </button>
+                        </div>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -485,19 +164,6 @@
     <!-- Notification Toast -->
     <div id="toast" class="toast">Đã lưu thành công!</div>
 
-    <script src="auth.js?v=20260317"></script>
-    <script src="script.js?v=20260317_2"></script>
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', function () {
-                navigator.serviceWorker.register('/sw.js').then(function (registration) {
-                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                }, function (err) {
-                    console.log('ServiceWorker registration failed: ', err);
-                });
-            });
-        }
-    </script>
+    <script src="app.js?v=2026"></script>
 </body>
-
 </html>
