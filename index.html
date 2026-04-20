@@ -3,9 +3,13 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Quản lý Đăng Video TikTok</title>
+    <title>TT - Quản lý Video TikTok</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css" />
+    <script>
+        // Cache-bust local assets during dev (no hard refresh needed)
+        window.__assetVersion = Date.now().toString();
+        document.write(`<link rel="stylesheet" href="style.css?v=${window.__assetVersion}">`);
+    </script>
 
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
@@ -16,7 +20,7 @@
         <!-- Header -->
         <header class="app-header">
             <div class="header-content">
-                <h1>Quản lý Video TikTok ✨</h1>
+                <h1>TT - Quản lý Video TikTok ✨</h1>
                 <p>Theo dõi lịch trình đăng và trạng thái edit video</p>
             </div>
             <div class="header-actions">
@@ -61,8 +65,8 @@
                 <p>Đang tải dữ liệu từ Firebase...</p>
             </div>
 
-            <!-- List Container Grid -->
-            <div id="videoListContainer" class="video-grid" style="display: none;">
+            <!-- List Container (dạng lưới theo hàng/cột) -->
+            <div id="videoListContainer" class="video-table" style="display: none;">
                 <!-- Video Cards will be placed here -->
             </div>
             
@@ -231,6 +235,10 @@
                         <label style="display:block; margin-bottom:4px; font-weight:600; font-size:0.9rem;">Tên Sản phẩm</label>
                         <input type="text" id="new_product_name" required placeholder="Nhập tên sản phẩm..." style="width:100%; padding:10px; border:1px solid #e2e8f0; border-radius:8px;">
                     </div>
+                    <div style="flex: 1;">
+                        <label style="display:block; margin-bottom:4px; font-weight:600; font-size:0.9rem;">Ghi chú</label>
+                        <input type="text" id="new_product_note" placeholder="Ví dụ: link landing, ưu đãi..." style="width:100%; padding:10px; border:1px solid #e2e8f0; border-radius:8px;">
+                    </div>
                     <div>
                         <label style="display:block; margin-bottom:4px; font-weight:600; font-size:0.9rem;">Hoạt động</label>
                         <input type="checkbox" id="new_product_active" checked style="width:20px; height:20px; cursor:pointer; margin-bottom: 8px;">
@@ -249,6 +257,8 @@
     <!-- Notification Toast -->
     <div id="toast" class="toast">Đã lưu thành công!</div>
 
-    <script src="app.js?v=2026"></script>
+    <script>
+        document.write(`<script src="app.js?v=${window.__assetVersion}"><\/script>`);
+    </script>
 </body>
 </html>

@@ -203,6 +203,232 @@ button {
     gap: 20px;
 }
 
+.video-table {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.video-row {
+    display: grid;
+    grid-template-columns: 80% 20%;
+    gap: 10px;
+    align-items: start;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+}
+
+.video-row:last-child {
+    border-bottom: none;
+}
+
+.video-cell {
+    min-width: 0;
+}
+
+.video-main {
+    padding-right: 12px;
+    border-right: 1px solid var(--border);
+}
+
+.video-side {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
+    padding-left: 12px;
+}
+
+.row-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 6px 2px;
+}
+
+.video-side .status-badge {
+    align-self: flex-start;
+}
+
+.video-side .secondary-btn {
+    width: auto;
+    align-self: flex-end;
+    justify-content: center;
+}
+
+.video-side-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.video-side-label {
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.video-side-value {
+    min-width: 0;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-main);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.video-cell.muted {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.video-product-pill {
+    font-size: 0.85rem;
+    color: #0369a1;
+    background: #e0f2fe;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-weight: 700;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.video-link-mini {
+    font-size: 0.9rem;
+    color: var(--primary);
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+    max-width: 100%;
+}
+
+.video-link-mini:hover {
+    text-decoration: underline;
+}
+
+.quick-title-input {
+    width: 100%;
+    border: 1px solid transparent;
+    background: #f8fafc;
+    font: inherit;
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--text-main);
+    padding: 10px 12px;
+    border-radius: 10px;
+    outline: none;
+}
+
+.quick-title-input:focus {
+    border-color: var(--primary);
+    background: #fff;
+    box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.quick-note-input {
+    width: 100%;
+    border: 1px solid transparent;
+    background: #f8fafc;
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-main);
+    padding: 8px 10px;
+    border-radius: 10px;
+    outline: none;
+    resize: vertical;
+    min-height: 34px;
+    max-height: 120px;
+}
+
+.icon-btn {
+    border: 1px solid var(--border);
+    background: white;
+    color: #475569;
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.icon-btn:hover {
+    background: #f1f5f9;
+    color: var(--primary);
+}
+
+.icon-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.quick-note-input:focus {
+    border-color: var(--primary);
+    background: #fff;
+    box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.quick-title-hint {
+    display: none;
+}
+
+.row-note {
+    margin-top: 6px;
+    margin-bottom: 0;
+    padding: 8px 10px;
+    border-radius: 10px;
+    max-height: 70px;
+    border-left-width: 2px;
+}
+
+.video-row:hover {
+    background: #f8fafc;
+}
+
+@media (max-width: 1100px) {
+    .video-row {
+        grid-template-columns: 78% 22%;
+    }
+}
+
+@media (max-width: 900px) {
+    .video-row {
+        grid-template-columns: 1fr;
+        gap: 10px;
+        padding: 12px;
+    }
+    .video-main {
+        padding-right: 0;
+        border-right: none;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border);
+    }
+    .video-side {
+        padding-left: 0;
+    }
+    .quick-title-hint {
+        display: block;
+        margin-top: 6px;
+    }
+}
+
 .video-card {
     background: var(--bg-card);
     border-radius: 16px;

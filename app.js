@@ -105,16 +105,19 @@ function renderList() {
 
     container.innerHTML = '';
     let count = 0;
+    const renderedIds = [];
 
     videoList.forEach(item => {
         // Lọc
-        if (searchVal && !item.tieu_de.toLowerCase().includes(searchVal)) return;
+        const safeTitle = (item.tieu_de || '').toString();
+        if (searchVal && !safeTitle.toLowerCase().includes(searchVal)) return;
         if (statusVal && item.trang_thai !== statusVal) return;
         if (productVal && item.san_pham !== productVal) return;
 
         if (dateVal && item.ngay_dang !== dateVal) return;
 
         count++;
+        renderedIds.push(item.id);
 
         // Xác định class cho status badge
         let badgeClass = '';
@@ -128,36 +131,155 @@ function renderList() {
         }
 
         let productStr = '';
+        let productName = '';
         if (item.san_pham) {
             const p = productList.find(x => x.id === item.san_pham);
             if (p) {
-                productStr = `<div style="font-size:0.8rem; color:#0369a1; background:#e0f2fe; display:inline-block; padding:4px 10px; border-radius:12px; margin-bottom:12px; font-weight:600;">📦 ${p.name}</div>`;
+                productName = p.name;
+                productStr = `<div style="font-size:0.8rem; color:#0369a1; background:#e0f2fe; display:inline-block; padding:4px 10px; border-radius:12px; margin-bottom:12px; font-weight:600;">📦 ${escapeHtml(p.name)}</div>`;
             }
         }
 
-        const card = document.createElement('div');
-        card.className = 'video-card';
-        card.innerHTML = `
-            <div class="card-header">
-                <div class="card-title">${item.tieu_de}</div>
-                <div class="status-badge ${badgeClass}">${item.trang_thai}</div>
+        const row = document.createElement('div');
+        row.className = 'video-row';
+        row.innerHTML = `
+            <div class="video-cell video-main">
+                <input class="quick-title-input" value="${escapeHtml(safeTitle)}" data-video-id="${item.id}" placeholder="Dán tiêu đề rồi nhấn Enter..." />
+                <div class="row-divider"></div>
+                <textarea class="quick-note-input" data-video-id="${item.id}" placeholder="Ghi chú (Enter để lưu & chuyển video tiếp theo, Shift+Enter để xuống dòng)">${escapeHtml(item.ghi_chu || '')}</textarea>
+                <div class="quick-title-hint">Dán tiêu đề → nhấn Enter để lưu & chuyển video tiếp theo</div>
             </div>
-            <div class="card-meta">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                Dự kiến: ${formatDate(item.ngay_dang)}
-            </div>
-            ${productStr}
-            ${item.ghi_chu ? `<div class="card-note">${item.ghi_chu}</div>` : ''}
-            <div class="card-footer">
-                ${item.link_video ? `<a href="${item.link_video}" target="_blank" style="font-size: 0.85rem; color:#4f46e5; font-weight:600; text-decoration:none; display:flex; align-items:center; gap:4px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Xem File Drive</a>` : `<span style="font-size: 0.85rem; color:#94a3b8;">Chưa đính kèm video</span>`}
-                <button type="button" class="secondary-btn" style="padding: 6px 12px; font-size: 0.85rem;" onclick="editRecord('${item.id}')">✏️ Sửa</button>
+            <div class="video-cell video-side">
+                <span class="status-badge ${badgeClass}">${escapeHtml(item.trang_thai || '')}</span>
+
+                <div class="video-side-row">
+                    <span class="video-side-label">Ngày</span>
+                    <span class="video-side-value" title="${escapeHtml(formatDate(item.ngay_dang))}">${escapeHtml(formatDate(item.ngay_dang))}</span>
+                </div>
+
+                <div class="video-side-row">
+                    <span class="video-side-label">SP</span>
+                    <span class="video-side-value" title="${escapeHtml(productName || '—')}">${escapeHtml(productName || '—')}</span>
+                    <button type="button" class="icon-btn" title="Sửa nhanh" onclick="editRecord('${item.id}')">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 20h9"></path>
+                            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="video-side-row">
+                    <span class="video-side-label">File</span>
+                    ${item.link_video
+                        ? `<a class="video-link-mini" href="${item.link_video}" target="_blank">Xem Drive</a>`
+                        : `<span class="video-side-value muted">Chưa có</span>`}
+                </div>
             </div>
         `;
-        container.appendChild(card);
+        container.appendChild(row);
+    });
+
+    // Bind quick title + note edit (enter to save & move)
+    container.querySelectorAll('.quick-title-input').forEach((input) => {
+        if (input.dataset.bound === '1') return;
+        input.dataset.bound = '1';
+
+        input.addEventListener('keydown', async (e) => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+
+            const videoId = input.dataset.videoId;
+            const newTitle = (input.value || '').trim();
+            if (!videoId) return;
+            if (!newTitle) {
+                showToast("Tiêu đề trống — chưa lưu");
+                return;
+            }
+
+            input.disabled = true;
+            try {
+                await tiktokRef.child(videoId).update({
+                    tieu_de: newTitle,
+                    cap_nhat_cuoi: new Date().toISOString()
+                });
+                showToast("Đã cập nhật tiêu đề!");
+
+                // Ưu tiên nhảy sang ô ghi chú cùng dòng để nhập nhanh
+                const rowEl = input.closest('.video-row');
+                const note = rowEl ? rowEl.querySelector('.quick-note-input') : null;
+                if (note) {
+                    note.focus();
+                    note.select();
+                } else {
+                    const allInputs = Array.from(container.querySelectorAll('.quick-title-input'));
+                    const idx = allInputs.indexOf(input);
+                    const next = idx >= 0 ? allInputs[idx + 1] : null;
+                    if (next) {
+                        next.focus();
+                        next.select();
+                        next.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    } else {
+                        input.blur();
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Lỗi cập nhật tiêu đề: " + (err?.message || err));
+            } finally {
+                input.disabled = false;
+            }
+        });
+    });
+
+    container.querySelectorAll('.quick-note-input').forEach((note) => {
+        if (note.dataset.bound === '1') return;
+        note.dataset.bound = '1';
+
+        note.addEventListener('keydown', async (e) => {
+            // Enter = lưu & nhảy video tiếp theo; Shift+Enter = xuống dòng
+            if (e.key !== 'Enter' || e.shiftKey) return;
+            e.preventDefault();
+
+            const videoId = note.dataset.videoId;
+            if (!videoId) return;
+            const newNote = (note.value || '').trim();
+
+            note.disabled = true;
+            try {
+                await tiktokRef.child(videoId).update({
+                    ghi_chu: newNote,
+                    cap_nhat_cuoi: new Date().toISOString()
+                });
+                showToast("Đã cập nhật ghi chú!");
+
+                const allNotes = Array.from(container.querySelectorAll('.quick-note-input'));
+                const idx = allNotes.indexOf(note);
+                const nextNote = idx >= 0 ? allNotes[idx + 1] : null;
+                if (nextNote) {
+                    const nextRow = nextNote.closest('.video-row');
+                    const nextTitle = nextRow ? nextRow.querySelector('.quick-title-input') : null;
+                    if (nextTitle) {
+                        nextTitle.focus();
+                        nextTitle.select();
+                        nextTitle.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    } else {
+                        nextNote.focus();
+                        nextNote.select();
+                    }
+                } else {
+                    note.blur();
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Lỗi cập nhật ghi chú: " + (err?.message || err));
+            } finally {
+                note.disabled = false;
+            }
+        });
     });
 
     if (count > 0) {
-        container.style.display = 'grid';
+        container.style.display = 'flex';
         noData.style.display = 'none';
     } else {
         container.style.display = 'none';
@@ -696,12 +818,14 @@ function handleAddProduct(e) {
     e.preventDefault();
     const idInput = document.getElementById('edit_product_id');
     const nameInput = document.getElementById('new_product_name');
+    const noteInput = document.getElementById('new_product_note');
     const activeInput = document.getElementById('new_product_active');
 
     if (!nameInput.value.trim()) return;
 
     const productData = {
         name: nameInput.value.trim(),
+        note: (noteInput?.value || '').trim(),
         is_active: activeInput.checked
     };
 
@@ -723,6 +847,7 @@ function handleAddProduct(e) {
 function resetProductForm() {
     document.getElementById('edit_product_id').value = '';
     document.getElementById('new_product_name').value = '';
+    document.getElementById('new_product_note').value = '';
     document.getElementById('new_product_active').checked = true;
     document.getElementById('btnSaveProduct').innerText = 'Thêm';
     document.getElementById('btnCancelProductEdit').style.display = 'none';
@@ -733,6 +858,7 @@ window.editProduct = function (id) {
     if (p) {
         document.getElementById('edit_product_id').value = p.id;
         document.getElementById('new_product_name').value = p.name;
+        document.getElementById('new_product_note').value = p.note || '';
         document.getElementById('new_product_active').checked = p.is_active;
         document.getElementById('btnSaveProduct').innerText = 'Lưu';
         document.getElementById('btnCancelProductEdit').style.display = 'inline-block';
@@ -762,7 +888,10 @@ function renderProductList() {
     sorted.forEach(p => {
         html += `
             <tr style="border-bottom: 1px solid #e2e8f0; background: ${p.is_active ? '#fff' : '#f8fafc'};">
-                <td style="padding:12px; font-weight: 500; ${!p.is_active ? 'color:#94a3b8; text-decoration:line-through;' : ''}">${p.name}</td>
+                <td style="padding:12px; font-weight: 500; ${!p.is_active ? 'color:#94a3b8; text-decoration:line-through;' : ''}">
+                    <div>${p.name}</div>
+                    ${p.note ? `<div style="margin-top:4px; font-size:0.8rem; color:#64748b; white-space:pre-wrap;">${escapeHtml(p.note)}</div>` : ''}
+                </td>
                 <td style="padding:12px; text-align:center; width:80px;">
                     <span style="font-size: 0.8rem; padding: 4px 8px; border-radius: 4px; background: ${p.is_active ? '#dcfce3' : '#fee2e2'}; color: ${p.is_active ? '#166534' : '#991b1b'}; cursor: pointer; user-select: none;" title="Bấm vào nút Đổi TT bên cạnh">
                         ${p.is_active ? 'Bật' : 'Tắt'}
@@ -780,3 +909,12 @@ function renderProductList() {
     container.innerHTML = html;
 }
 
+function escapeHtml(input) {
+    const s = (input ?? '').toString();
+    return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
