@@ -22,6 +22,11 @@ const productRef = database.ref('tiktok_products');
 const APPS_SCRIPT_UPLOAD_VIDEO_URL = "https://script.google.com/macros/s/AKfycbwCqKlwoNg9y-sPnkC2Lpud3c1aTFs5Nr-knSfxs9cUe2xKLgs5CkIVN-Sx3rUGEZXu4g/exec";
 // ======================================
 
+// === CONFIG THƯ MỤC DRIVE TRÊN MÁY (Drive for desktop) ===
+// Dùng để lưu kèm đường dẫn local vào DB: G:\My Drive\TikTok Video Uploader\<ten_file>
+const LOCAL_DRIVE_VIDEO_DIR = "G:\\My Drive\\TikTok Video Uploader";
+// ======================================
+
 // Data nội bộ
 let videoList = [];
 let productList = [];
@@ -123,8 +128,6 @@ function renderList() {
         let badgeClass = '';
         switch (item.trang_thai) {
             case 'Video gốc': badgeClass = 'status-goc'; break;
-            case 'Đã ghép text': badgeClass = 'status-text'; break;
-            case 'Đã ghép lồng tiếng': badgeClass = 'status-audio'; break;
             case 'Chờ đăng': badgeClass = 'status-waiting'; break;
             case 'Đã đăng': badgeClass = 'status-posted'; break;
             default: badgeClass = 'status-cancel';
@@ -142,6 +145,10 @@ function renderList() {
 
         const row = document.createElement('div');
         row.className = 'video-row';
+        const outputView = (item.output_link_video || '').toString().trim();
+        const outputDl = (item.output_link_video_download || '').toString().trim();
+        const hasOutput = !!(outputView || outputDl);
+        const shareUrl = outputDl || outputView;
         row.innerHTML = `
             <div class="video-cell video-main">
                 <input class="quick-title-input" value="${escapeHtml(safeTitle)}" data-video-id="${item.id}" placeholder="Dán tiêu đề rồi nhấn Enter..." />
@@ -170,9 +177,21 @@ function renderList() {
 
                 <div class="video-side-row">
                     <span class="video-side-label">File</span>
-                    ${item.link_video
-                        ? `<a class="video-link-mini" href="${item.link_video}" target="_blank">Xem Drive</a>`
-                        : `<span class="video-side-value muted">Chưa có</span>`}
+                    ${hasOutput
+                        ? `
+                            ${outputView ? `<a class="video-link-mini" href="${outputView}" target="_blank">Thành phẩm</a>` : ``}
+                            ${outputDl ? `<a class="video-link-mini" href="${outputDl}" target="_blank" style="margin-left:8px;">Tải</a>` : ``}
+                            <button type="button" class="icon-btn" title="Share lên điện thoại" style="margin-left:8px;" onclick="shareOutputLink('${escapeHtml(shareUrl)}','${escapeHtml(safeTitle)}')">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/>
+                                    <path d="M16 6l-4-4-4 4"/>
+                                    <path d="M12 2v13"/>
+                                </svg>
+                            </button>
+                          `
+                        : (item.link_video
+                            ? `<a class="video-link-mini" href="${item.link_video}" target="_blank">Xem Drive</a>`
+                            : `<span class="video-side-value muted">Chưa có</span>`)}
                 </div>
             </div>
         `;
@@ -358,6 +377,32 @@ function closeModal() {
 window.editRecord = function (id) {
     const item = videoList.find(i => i.id === id);
     if (item) openModal(item);
+}
+
+window.shareOutputLink = async function (url, title) {
+    const u = (url || '').toString().trim();
+    if (!u) {
+        showToast("Chưa có link thành phẩm để share");
+        return;
+    }
+    const t = (title || '').toString().trim() || "Video TikTok";
+    try {
+        if (navigator.share) {
+            await navigator.share({ title: t, text: t, url: u });
+            return;
+        }
+    } catch (err) {
+        // User cancelled share or share failed; fall back to copy.
+        console.warn(err);
+    }
+
+    try {
+        await navigator.clipboard.writeText(u);
+        showToast("Đã copy link thành phẩm!");
+    } catch (err) {
+        console.warn(err);
+        prompt("Copy link thành phẩm:", u);
+    }
 }
 
 // Xử lý File Input và Upload
@@ -617,6 +662,7 @@ function uploadRecordedFile(file) {
 function updateUIWithFile(fileId, fileName) {
     const resultUrl = `https://drive.google.com/file/d/${fileId}/view`;
     const downloadUrl = `https://drive.google.com/uc?id=${fileId}&export=download`;
+    const localVideoPath = buildLocalVideoPathFromFileName(fileName);
 
     document.getElementById('uploadProgressContainer').style.display = 'none';
     document.getElementById('videoPreviewContainer').style.display = 'block';
@@ -644,12 +690,38 @@ function updateUIWithFile(fileId, fileName) {
             link_video_download: downloadUrl,
             ten_file: fileName,
             drive_file_id: fileId,
+            local_video_path: localVideoPath,
             cap_nhat_cuoi: new Date().toISOString()
         }).then(() => {
             showToast("Đã lưu tên file vào DB!");
         }).catch((err) => {
             console.error(err);
             alert("Upload xong nhưng lỗi lưu DB: " + (err?.message || err));
+        });
+    } else {
+        // Tạo mới: nếu chưa có record nào (editId trống) thì tạo record nháp để lưu ngay tên file vào DB
+        const payload = {
+            tieu_de: computeDefaultTitleIfEmpty(document.getElementById('tieu_de')?.value),
+            san_pham: document.getElementById('san_pham')?.value || '',
+            ngay_dang: document.getElementById('ngay_dang')?.value || new Date().toISOString().split('T')[0],
+            trang_thai: document.getElementById('trang_thai')?.value || 'Video gốc',
+            ghi_chu: (document.getElementById('ghi_chu')?.value || '').trim(),
+            link_video: resultUrl,
+            link_video_download: downloadUrl,
+            ten_file: fileName,
+            drive_file_id: fileId,
+            local_video_path: localVideoPath,
+            cap_nhat_cuoi: new Date().toISOString()
+        };
+
+        tiktokRef.push(payload).then((ref) => {
+            document.getElementById('editId').value = ref.key;
+            document.getElementById('modalTitle').innerText = 'Cập nhật Video';
+            document.getElementById('btnDeleteRecord').style.display = 'inline-block';
+            showToast("Upload xong: đã tạo record & lưu tên file!");
+        }).catch((err) => {
+            console.error(err);
+            alert("Upload xong nhưng không tạo được record: " + (err?.message || err));
         });
     }
 }
@@ -709,6 +781,23 @@ function removeUploadedVideo() {
     // isUploading = false; // Note: do not set here if called while fetching
 }
 
+function computeDefaultTitleIfEmpty(rawTitle) {
+    let t = (rawTitle || '').trim();
+    if (t) return t;
+    const now = new Date();
+    const timeStr = `${now.getHours()}h${now.getMinutes()}`;
+    const dateParts = document.getElementById('ngay_dang').value.split('-');
+    const dateStr = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : '';
+    return `Video ${dateStr} ${timeStr}`;
+}
+
+function buildLocalVideoPathFromFileName(fileName) {
+    const name = (fileName || '').trim();
+    if (!name) return '';
+    // Keep Windows path format for local tools
+    return `${LOCAL_DRIVE_VIDEO_DIR}\\${name}`;
+}
+
 // Lưu dữ liệu vào Firebase
 function handleSaveVideo(e) {
     e.preventDefault();
@@ -738,6 +827,7 @@ function handleSaveVideo(e) {
         link_video_download: document.getElementById('link_video_download').value,
         ten_file: document.getElementById('ten_file').value,
         drive_file_id: document.getElementById('drive_file_id').value,
+        local_video_path: buildLocalVideoPathFromFileName(document.getElementById('ten_file').value),
         cap_nhat_cuoi: new Date().toISOString()
     };
 

@@ -12,6 +12,11 @@ from typing import Any, Dict, Optional, Tuple
 import httpx
 
 
+# NOTE: You asked to hardcode this for local-only usage.
+# If you ever share this file, rotate the key immediately.
+DEFAULT_FPT_TTS_API_KEY = "48HM12npAD38VYxgrFmuHhjBp9oPvsvt"
+
+
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -90,10 +95,107 @@ def ffmpeg_drawtext_escape_text(s: str) -> str:
     )
 
 
+def ffmpeg_filter_escape_path(p: Path) -> str:
+    """
+    Escape a file path for FFmpeg filter args (drawtext textfile=...).
+    - FFmpeg filters treat ':' as a separator => escape it as '\\:'
+    - Also escape single quotes for safety.
+    """
+    s = p.resolve().as_posix()
+    return s.replace(":", r"\:").replace("'", r"\'")
+
+
+def wrap_text_for_drawtext(text: str, max_chars_per_line: int = 26, max_lines: int = 3) -> str:
+    """
+    FFmpeg drawtext doesn't auto-wrap. We'll insert explicit newlines.
+    Strategy: wrap by words, cap lines; if overflow, ellipsize last line.
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+
+    # Manual line breaks: user can insert '@' to force new lines.
+    # Example: "a@b@c" -> ["a", "b", "c"]
+    parts = [p.strip() for p in raw.split("@")]
+    parts = [p for p in parts if p]
+    if not parts:
+        return ""
+
+    t = " ".join(" ".join(parts).split())
+    if not t:
+        return ""
+
+    def wrap_one(paragraph: str) -> list[str]:
+        paragraph = " ".join((paragraph or "").split())
+        if not paragraph:
+            return []
+        words = paragraph.split(" ")
+        lines: list[str] = []
+        cur: list[str] = []
+        cur_len = 0
+
+        def flush() -> None:
+            nonlocal cur, cur_len
+            if cur:
+                lines.append(" ".join(cur))
+            cur = []
+            cur_len = 0
+
+        for w in words:
+            add_len = (1 if cur else 0) + len(w)
+            if cur and cur_len + add_len > max_chars_per_line:
+                flush()
+            cur.append(w)
+            cur_len = cur_len + add_len if cur_len else len(w)
+
+        flush()
+        return lines
+
+    # Build lines respecting manual breaks first, then auto-wrap each part.
+    lines: list[str] = []
+    for part in parts:
+        for l in wrap_one(part):
+            if len(lines) >= max_lines:
+                break
+            lines.append(l)
+        if len(lines) >= max_lines:
+            break
+
+    # If there are still words left, ellipsize the last line.
+    # Detect overflow: if manual parts produce more lines than allowed OR wrapping truncated.
+    total_lines_possible = sum(len(wrap_one(p)) for p in parts)
+    if total_lines_possible > max_lines and lines:
+        last = lines[-1].rstrip(". ")
+        # Keep last line within budget (roughly)
+        budget = max(8, max_chars_per_line - 1)
+        if len(last) > budget:
+            last = last[:budget].rstrip()
+        lines[-1] = last + "…"
+
+    return "\n".join(lines[:max_lines])
+
+
+def choose_fontsize(text: str, base: int = 48) -> int:
+    # Small heuristic: longer text => slightly smaller font.
+    n = len(" ".join((text or "").split()))
+    if n <= 45:
+        return base
+    if n <= 75:
+        return max(36, base - 10)
+    if n <= 110:
+        return max(30, base - 16)
+    return max(26, base - 20)
+
+
 def rtdb_get(client: httpx.Client, db_url: str, path: str, params: Dict[str, str]) -> Dict[str, Any]:
     url = f"{db_url}/{path}.json"
     r = client.get(url, params=params)
-    r.raise_for_status()
+    try:
+        r.raise_for_status()
+    except Exception as e:
+        # Surface Firebase error body (often contains "Index not defined", permission errors, etc.)
+        msg = (r.text or "").strip()
+        raise RuntimeError(f"RTDB GET failed: {r.status_code} {url}\n{msg[:800]}") from e
     data = r.json()
     return data if isinstance(data, dict) else {}
 
@@ -113,12 +215,15 @@ def fetch_video_by_id(client: httpx.Client, db_url: str, video_id: str) -> Dict[
 
 
 def pick_latest_job_id(client: httpx.Client, db_url: str, status: str = "Video gốc") -> Optional[str]:
-    params = {"orderBy": json.dumps("trang_thai", ensure_ascii=False), "equalTo": json.dumps(status, ensure_ascii=False)}
-    jobs = rtdb_get(client, db_url, "tiktok_videos", params)
+    # Avoid RTDB indexed queries here because they can 400 if rules don't define indexOn.
+    # Fetch all and filter locally.
+    jobs = rtdb_get(client, db_url, "tiktok_videos", params={})
     best_id: Optional[str] = None
     best_key: Tuple[str, str] = ("", "")
     for vid, item in jobs.items():
         if not isinstance(item, dict):
+            continue
+        if (item.get("trang_thai") or "").strip() != status:
             continue
         ngay = (item.get("ngay_dang") or "").strip()
         updated = (item.get("cap_nhat_cuoi") or "").strip()
@@ -137,6 +242,17 @@ def guess_drive_download_url(item: Dict[str, Any]) -> Optional[str]:
     return u or None
 
 
+def resolve_local_video_from_db(item: Dict[str, Any]) -> Optional[Path]:
+    p = (item.get("local_video_path") or "").strip()
+    if not p:
+        return None
+    try:
+        cand = Path(p)
+    except Exception:
+        return None
+    return cand if cand.exists() else None
+
+
 def download_to_file(url: str, out_path: Path, timeout_s: int = 120) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with httpx.Client(timeout=timeout_s, follow_redirects=True) as client:
@@ -146,6 +262,52 @@ def download_to_file(url: str, out_path: Path, timeout_s: int = 120) -> None:
                 for chunk in r.iter_bytes():
                     if chunk:
                         f.write(chunk)
+
+
+def apps_script_init_upload(client: httpx.Client, apps_script_url: str, filename: str, mime_type: str) -> str:
+    r = client.post(
+        apps_script_url,
+        content=json.dumps({"action": "init", "filename": filename, "mimeType": mime_type}, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json; charset=utf-8"},
+    )
+    r.raise_for_status()
+    data = r.json()
+    if not isinstance(data, dict) or not data.get("success"):
+        raise RuntimeError(f"Apps Script init failed: {data}")
+    upload_url = data.get("uploadUrl")
+    if not upload_url or not isinstance(upload_url, str):
+        raise RuntimeError(f"Apps Script init missing uploadUrl: {data}")
+    return upload_url
+
+
+def apps_script_verify(client: httpx.Client, apps_script_url: str, filename: str, retries: int = 8, sleep_s: float = 2.0) -> str:
+    last: Any = None
+    for _ in range(max(retries, 1)):
+        r = client.post(
+            apps_script_url,
+            content=json.dumps({"action": "verify", "filename": filename}, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json; charset=utf-8"},
+        )
+        r.raise_for_status()
+        data = r.json()
+        last = data
+        if isinstance(data, dict) and data.get("success") and data.get("found") and data.get("fileId"):
+            return str(data["fileId"])
+        time.sleep(sleep_s)
+    raise RuntimeError(f"Apps Script verify failed for {filename}: {last}")
+
+
+def upload_output_to_drive(apps_script_url: str, output_path: Path, drive_filename: str) -> str:
+    if not output_path.exists():
+        raise FileNotFoundError(output_path)
+    with httpx.Client(timeout=600, follow_redirects=True) as client:
+        upload_url = apps_script_init_upload(client, apps_script_url, drive_filename, mime_type="video/mp4")
+        data = output_path.read_bytes()
+        put = client.put(upload_url, content=data, headers={"Content-Type": "video/mp4"})
+        # Some signed upload URLs may not allow reading response details; rely on verify.
+        if put.status_code >= 400:
+            raise RuntimeError(f"Upload PUT failed: {put.status_code} {put.text[:300]}")
+        return apps_script_verify(client, apps_script_url, drive_filename)
 
 
 def fpt_tts_create(api_key: str, text: str, voice: str, speed: str) -> str:
@@ -201,12 +363,23 @@ def render_video_with_tts_and_text(input_video: Path, tts_mp3: Path, text: str, 
         raise FileNotFoundError(tts_mp3)
 
     dur_s = probe_duration_seconds(input_video)
-    escaped_text = ffmpeg_drawtext_escape_text(text)
+    wrapped = wrap_text_for_drawtext(text, max_chars_per_line=26, max_lines=3)
+    fontsize = choose_fontsize(text, base=48)
+
+    # Use textfile to avoid newline/escaping issues on Windows.
+    # This also correctly handles Vietnamese text and manual breaks via '@'.
+    textfile_path = output_video.parent / "_overlay_text.txt"
+    textfile_path.parent.mkdir(parents=True, exist_ok=True)
+    # Force LF newlines to avoid "double-spaced" rendering on some Windows builds.
+    with textfile_path.open("w", encoding="utf-8", newline="\n") as f:
+        f.write(wrapped)
+    escaped_textfile = ffmpeg_filter_escape_path(textfile_path)
+
     drawtext = (
         "drawtext=font=Arial:"
-        f"text='{escaped_text}':"
-        "x=(w-text_w)/2:y=(h/3)-(text_h/2):"
-        "fontsize=48:fontcolor=white:borderw=4:bordercolor=black"
+        f"textfile='{escaped_textfile}':reload=0:"
+        "x=(w-text_w)/2:y=(h*0.22)-(text_h/2):"
+        f"fontsize={fontsize}:fontcolor=white:borderw=4:bordercolor=black:line_spacing=0"
     )
 
     output_video.parent.mkdir(parents=True, exist_ok=True)
@@ -227,6 +400,10 @@ def render_video_with_tts_and_text(input_video: Path, tts_mp3: Path, text: str, 
             "1:a:0",
             "-vf",
             drawtext,
+            # Keep output duration equal to the original video.
+            # If TTS audio is shorter, pad with silence so ffmpeg doesn't end early.
+            "-af",
+            "apad",
             "-c:v",
             "libx264",
             "-crf",
@@ -237,7 +414,6 @@ def render_video_with_tts_and_text(input_video: Path, tts_mp3: Path, text: str, 
             "aac",
             "-b:a",
             "192k",
-            "-shortest",
             str(output_video),
         ]
     )
@@ -254,7 +430,24 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--status", default="Video gốc", help="Status to auto-pick when --video-id empty")
     ap.add_argument("--out-dir", default="tools/out", help="Output base dir")
     ap.add_argument("--work-dir", default="tools/work", help="Working dir for downloads/cache")
-    ap.add_argument("--fpt-api-key", default=os.getenv("FPT_TTS_API_KEY", ""), help="FPT TTS api-key (env recommended)")
+    ap.add_argument(
+        "--apps-script-url",
+        default=os.getenv(
+            "APPS_SCRIPT_UPLOAD_VIDEO_URL",
+            "https://script.google.com/macros/s/AKfycbwCqKlwoNg9y-sPnkC2Lpud3c1aTFs5Nr-knSfxs9cUe2xKLgs5CkIVN-Sx3rUGEZXu4g/exec",
+        ),
+        help="Apps Script upload endpoint (init/verify)",
+    )
+    ap.add_argument(
+        "--prefer-local",
+        action="store_true",
+        help="Prefer local_video_path when it exists (default: prefer downloading from Drive)",
+    )
+    ap.add_argument(
+        "--fpt-api-key",
+        default=os.getenv("FPT_TTS_API_KEY", "").strip() or DEFAULT_FPT_TTS_API_KEY,
+        help="FPT TTS api-key (env recommended)",
+    )
     ap.add_argument("--voice", default=os.getenv("FPT_TTS_VOICE", "banmai"), help="FPT voice")
     ap.add_argument("--speed", default=os.getenv("FPT_TTS_SPEED", ""), help="FPT speed")
     return ap.parse_args()
@@ -300,10 +493,6 @@ def main() -> int:
         except Exception:
             pass
 
-        video_url = guess_drive_download_url(item)
-        if not video_url:
-            raise RuntimeError("Missing drive_file_id or link_video_download in DB")
-
         ten_file = (item.get("ten_file") or "").strip() or f"{video_id}.mp4"
         safe_base = Path(ten_file).stem
         job_work = work_dir / video_id
@@ -313,8 +502,34 @@ def main() -> int:
         output_video = job_out / f"{safe_base}_tts.mp4"
 
         print(f"[db] video_id={video_id} ten_file={ten_file}")
-        print(f"[download] video -> {input_video}")
-        download_to_file(video_url, input_video, timeout_s=300)
+        video_url = guess_drive_download_url(item)
+        local_video = resolve_local_video_from_db(item)
+
+        def use_local() -> None:
+            if not local_video:
+                raise RuntimeError("local_video_path not found or file missing")
+            print(f"[local] video -> {local_video}")
+            input_video.parent.mkdir(parents=True, exist_ok=True)
+            input_video.write_bytes(local_video.read_bytes())
+
+        def download_drive() -> None:
+            if not video_url:
+                raise RuntimeError("Missing drive_file_id/link_video_download in DB")
+            print(f"[download] video -> {input_video}")
+            download_to_file(video_url, input_video, timeout_s=300)
+
+        # Default behavior: prefer downloading from Drive (so you don't need local files).
+        if args.prefer_local and local_video:
+            try:
+                use_local()
+            except Exception:
+                download_drive()
+        else:
+            try:
+                download_drive()
+            except Exception as e:
+                print(f"[warn] drive download failed, trying local if available: {e}")
+                use_local()
 
         print("[tts] create audio from title...")
         audio_url = fpt_tts_create(args.fpt_api_key, title, voice=args.voice, speed=args.speed)
@@ -326,13 +541,23 @@ def main() -> int:
         print(f"[ffmpeg] render -> {output_video}")
         render_video_with_tts_and_text(input_video, tts_mp3, title, output_video)
 
+        print("[drive] upload output to Drive...")
+        out_drive_name = f"{safe_base}_tts.mp4"
+        out_file_id = upload_output_to_drive(args.apps_script_url, output_video, out_drive_name)
+        out_view = f"https://drive.google.com/file/d/{out_file_id}/view"
+        out_dl = f"https://drive.google.com/uc?id={out_file_id}&export=download"
+
         patch = {
-            "trang_thai": "Đã ghép lồng tiếng",
+            "trang_thai": "Chờ đăng",
             "tts_text": title,
             "tts_audio_url": audio_url,
             "local_input_video_path": str(input_video),
             "local_tts_mp3_path": str(tts_mp3),
             "local_output_path": str(output_video),
+            "output_ten_file": out_drive_name,
+            "output_drive_file_id": out_file_id,
+            "output_link_video": out_view,
+            "output_link_video_download": out_dl,
             "xu_ly_xong_luc": utc_now_iso(),
         }
         rtdb_patch(client, db_url, f"tiktok_videos/{video_id}", patch)
