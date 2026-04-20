@@ -19,7 +19,7 @@ const productRef = database.ref('tiktok_products');
 
 // === CONFIG APPS SCRIPT URL TẠI ĐÂY ===
 // Sử dụng URL apps script user cung cấp
-const APPS_SCRIPT_UPLOAD_VIDEO_URL = "https://script.google.com/macros/s/AKfycbwJYH4spkYPD_ZZvVFBQ4rZS05USsOqyoJrZMFRMsxK7dgH8km8h9JwiSGwmOcel6RYoA/exec";
+const APPS_SCRIPT_UPLOAD_VIDEO_URL = "https://script.google.com/macros/s/AKfycbwCqKlwoNg9y-sPnkC2Lpud3c1aTFs5Nr-knSfxs9cUe2xKLgs5CkIVN-Sx3rUGEZXu4g/exec";
 // ======================================
 
 // Data nội bộ
@@ -111,7 +111,7 @@ function renderList() {
         if (searchVal && !item.tieu_de.toLowerCase().includes(searchVal)) return;
         if (statusVal && item.trang_thai !== statusVal) return;
         if (productVal && item.san_pham !== productVal) return;
-        
+
         if (dateVal && item.ngay_dang !== dateVal) return;
 
         count++;
@@ -187,7 +187,7 @@ function openModal(item = null) {
     // Set Default ngày: Ưu tiên lấy từ bộ lọc nếu có
     const filterDate = document.getElementById('dateFilter').value;
     document.getElementById('ngay_dang').value = filterDate || new Date().toISOString().split('T')[0];
-    
+
     // Set Default Sản phẩm: Ưu tiên lấy từ bộ lọc
     const filterProduct = document.getElementById('productFilter').value;
     document.getElementById('san_pham').value = filterProduct || '';
@@ -256,74 +256,70 @@ function handleFileSelection(e) {
     progressBar.style.width = '10%';
     isUploading = true;
 
-    // Chuyển đổi file -> base64
-    const reader = new FileReader();
-    reader.onload = function (event) {
-        // Chú ý: Gỡ bỏ phần tiền tố "data:video/mp4;base64," trước khi gửi sang Apps Script
-        const base64 = event.target.result.split(',')[1];
+    // Tính toán tên file: YYYYMMDD HHMMSS - Tên sản phẩm
+    const now = new Date();
+    const timeStr = `${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`;
+    const ngayDangRaw = document.getElementById('ngay_dang').value; // yyyy-mm-dd
+    const ngayDangClean = ngayDangRaw.replace(/-/g, '');
+    
+    const sanPhamId = document.getElementById('san_pham').value;
+    const sanPhamObj = productList.find(p => p.id === sanPhamId);
+    const sanPhamName = sanPhamObj ? sanPhamObj.name : "Không sản phẩm";
+    
+    const extension = file.name.split('.').pop();
+    const finalFileName = `${ngayDangClean} ${timeStr} - ${sanPhamName}.${extension}`;
 
-        // Cập nhật progress giả (read local ok)
-        progressBar.style.width = '40%';
-
-        // Bắt đầu đẩy lên Google Drive thông qua Web App
-        fetch(APPS_SCRIPT_UPLOAD_VIDEO_URL, {
-            method: 'POST',
-            body: JSON.stringify({
-                base64: base64,
-                filename: file.name,
-                mimeType: file.type
-            }),
-            // mode: 'no-cors' -> Không thể dùng vì ta cần JSON response
+    // Bước 1: Khởi tạo phiên tải lên (Init Session) qua Apps Script
+    fetch(APPS_SCRIPT_UPLOAD_VIDEO_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+            action: 'init',
+            filename: finalFileName,
+            mimeType: file.type
         })
-            .then(response => {
-                progressBar.style.width = '80%';
-                return response.json();
-            })
-            .then(result => {
-                if (result.success) {
-                    progressBar.style.width = '100%';
+    })
+        .then(response => response.json())
+        .then(initResult => {
+            if (!initResult.success) throw new Error(initResult.error);
 
-                    // Trễ nhẹ để mượt UI
-                    setTimeout(() => {
-                        // Cập nhật View
-                        document.getElementById('uploadProgressContainer').style.display = 'none';
-                        document.getElementById('videoPreviewContainer').style.display = 'block';
+            progressBar.style.width = '30%';
+            const uploadUrl = initResult.uploadUrl;
 
-                        document.getElementById('link_video').value = result.url;
-                        document.getElementById('link_video_download').value = result.downloadUrl || '';
+            const xhr = new XMLHttpRequest();
+            xhr.open('PUT', uploadUrl, true);
+            xhr.setRequestHeader('Content-Type', file.type); // Quan trọng: Phải khớp với lúc init
 
-                        document.getElementById('previewFileName').innerText = file.name;
-                        document.getElementById('previewFileLink').href = result.url;
-
-                        if (result.downloadUrl) {
-                            document.getElementById('previewFileDownload').href = result.downloadUrl;
-                            document.getElementById('previewFileDownload').style.display = 'inline';
-                        } else {
-                            document.getElementById('previewFileDownload').style.display = 'none';
-                        }
-
-                        showToast("Tải video thành công!");
-                        isUploading = false;
-                    }, 500);
-                } else {
-                    throw new Error(result.error);
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const percent = Math.round((e.loaded / e.total) * 70) + 30; // 30% -> 100%
+                    progressBar.style.width = percent + '%';
                 }
-            })
-            .catch(err => {
-                console.error(err);
-                alert("Lỗi upload: Có thể video quá nặng (>35MB) làm crash kết nối. Hoặc do Apps Script chưa xuất bản đúng.");
-                removeUploadedVideo();
-                isUploading = false;
-            });
-    };
-    reader.onerror = () => {
-        alert("Lỗi khi đọc file local!");
-        removeUploadedVideo();
-        isUploading = false;
-    }
+            };
 
-    progressBar.style.width = '20%';
-    reader.readAsDataURL(file);
+            xhr.onload = () => {
+                // Ngay khi kết thúc (dù 200 hay lỗi nhẹ), ta đều đi Verify để chắc chắn 100%
+                if (xhr.status === 200 || xhr.status === 201 || xhr.status === 0) {
+                    verifyFileOnDrive(finalFileName);
+                } else {
+                    alert("Lỗi tải lên Google Drive: " + xhr.status);
+                    removeUploadedVideo();
+                    isUploading = false;
+                }
+            };
+
+            xhr.onerror = () => {
+                // Có thể bị chặn CORS khi đọc response, nhưng binary đã bay đi. Đi verify ngay.
+                verifyFileOnDrive(finalFileName);
+            };
+
+            xhr.send(file);
+        })
+        .catch(err => {
+            console.error(err);
+            alert("Lỗi khởi tạo upload: " + err.message);
+            removeUploadedVideo();
+            isUploading = false;
+        });
 }
 
 // --- LOGIC QUAY VIDEO TRỰC TIẾP ---
@@ -377,13 +373,13 @@ function startRecording() {
 
     mediaRecorder.start();
     recordingStartTime = Date.now();
-    
+
     document.getElementById('btnStartRecording').style.display = 'none';
     document.getElementById('btnStopRecording').style.display = 'flex';
     document.getElementById('btnStopRecording').style.opacity = '0.5'; // Mờ đi khi chưa đủ 20s
     document.getElementById('btnStopRecording').disabled = true;
     document.getElementById('recordingIndicator').style.display = 'flex';
-    
+
     recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
 }
 
@@ -424,11 +420,11 @@ function stopRecording() {
 function handleRecordingStopped() {
     const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType });
     const file = new File([blob], `recorded_video_${Date.now()}.mp4`, { type: mediaRecorder.mimeType });
-    
+
     // Tự động đóng modal quay và chuyển sang luồng upload
     if (stream) stream.getTracks().forEach(track => track.stop());
     document.getElementById('recordingModal').classList.remove('show');
-    
+
     // Giả lập việc chọn file cho handleFileSelection (nhưng dùng Blob trực tiếp)
     uploadRecordedFile(file);
 }
@@ -441,37 +437,48 @@ function uploadRecordedFile(file) {
     progressBar.style.width = '10%';
     isUploading = true;
 
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        // Chú ý: Gỡ bỏ phần tiền tố "data:video/mp4;base64," trước khi gửi sang Apps Script
-        const base64 = e.target.result.split(',')[1];
-        progressBar.style.width = '40%';
+    // Tính toán tên file: YYYYMMDD HHMMSS - Tên sản phẩm
+    const now = new Date();
+    const timeStr = `${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`;
+    const ngayDangRaw = document.getElementById('ngay_dang').value;
+    const ngayDangClean = ngayDangRaw.replace(/-/g, '');
+    const sanPhamId = document.getElementById('san_pham').value;
+    const sanPhamObj = productList.find(p => p.id === sanPhamId);
+    const sanPhamName = sanPhamObj ? sanPhamObj.name : "Không sản phẩm";
+    const finalFileName = `${ngayDangClean} ${timeStr} - ${sanPhamName}.mp4`;
 
-        fetch(APPS_SCRIPT_UPLOAD_VIDEO_URL, {
-            method: 'POST',
-            body: JSON.stringify({
-                base64: base64,
-                filename: file.name,
-                mimeType: file.type
-            })
+    // Bước 1: Khởi tạo phiên tương tự bộ chọn file
+    fetch(APPS_SCRIPT_UPLOAD_VIDEO_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+            action: 'init',
+            filename: finalFileName,
+            mimeType: file.type
         })
+    })
         .then(res => res.json())
-        .then(result => {
-            if (result.success) {
-                progressBar.style.width = '100%';
-                setTimeout(() => {
-                    document.getElementById('uploadProgressContainer').style.display = 'none';
-                    document.getElementById('videoPreviewContainer').style.display = 'block';
-                    document.getElementById('link_video').value = result.url;
-                    document.getElementById('link_video_download').value = result.downloadUrl || '';
-                    document.getElementById('previewFileName').innerText = "Video vừa quay";
-                    document.getElementById('previewFileLink').href = result.url;
-                    document.getElementById('previewFileDownload').style.display = result.downloadUrl ? 'inline' : 'none';
-                    if(result.downloadUrl) document.getElementById('previewFileDownload').href = result.downloadUrl;
-                    showToast("Tải video thành công!");
-                    isUploading = false;
-                }, 500);
-            } else throw new Error(result.error);
+        .then(initResult => {
+            if (!initResult.success) throw new Error(initResult.error);
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('PUT', initResult.uploadUrl, true);
+
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const percent = Math.round((e.loaded / e.total) * 90) + 10;
+                    progressBar.style.width = percent + '%';
+                }
+            };
+
+            xhr.onload = () => {
+                verifyFileOnDrive(finalFileName);
+            };
+
+            xhr.onerror = () => {
+                verifyFileOnDrive(finalFileName);
+            };
+
+            xhr.send(file);
         })
         .catch(err => {
             console.error(err);
@@ -479,8 +486,71 @@ function uploadRecordedFile(file) {
             removeUploadedVideo();
             isUploading = false;
         });
-    };
-    reader.readAsDataURL(file);
+}
+
+/**
+ * Hàm cập nhật giao diện sau khi có File ID từ Google Drive
+ */
+function updateUIWithFile(fileId, fileName) {
+    const resultUrl = `https://drive.google.com/file/d/${fileId}/view`;
+    const downloadUrl = `https://drive.google.com/uc?id=${fileId}&export=download`;
+
+    document.getElementById('uploadProgressContainer').style.display = 'none';
+    document.getElementById('videoPreviewContainer').style.display = 'block';
+
+    document.getElementById('link_video').value = resultUrl;
+    document.getElementById('link_video_download').value = downloadUrl;
+    document.getElementById('previewFileName').innerText = fileName;
+    document.getElementById('previewFileLink').href = resultUrl;
+
+    const dlBtn = document.getElementById('previewFileDownload');
+    dlBtn.href = downloadUrl;
+    dlBtn.style.display = 'inline';
+
+    showToast("Tải video thành công!");
+    isUploading = false;
+}
+
+/**
+ * Xác thực xem file đã thực sự nằm trên Drive chưa (Xác thực tuyệt đối)
+ */
+function verifyFileOnDrive(filename, retry = 0) {
+    const progressBar = document.getElementById('uploadProgressBar');
+    if (retry === 0) {
+        progressBar.style.width = '95%';
+        showToast("Đang xác thực file trên Drive...");
+    }
+
+    fetch(APPS_SCRIPT_UPLOAD_VIDEO_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+            action: 'verify',
+            filename: filename
+        })
+    })
+        .then(res => res.json())
+        .then(result => {
+            if (result.success && result.found) {
+                updateUIWithFile(result.fileId, filename);
+            } else {
+                if (retry < 5) { // Thử lại tối đa 5 lần (khoảng 10 giây)
+                    setTimeout(() => verifyFileOnDrive(filename, retry + 1), 2000);
+                } else {
+                    alert("Không thể xác nhận file đã tải lên. Vui lòng kiểm tra Drive trực tiếp.");
+                    isUploading = false;
+                    document.getElementById('uploadProgressContainer').style.display = 'none';
+                }
+            }
+        })
+        .catch(err => {
+            console.error("Lỗi Verify:", err);
+            if (retry < 3) {
+                setTimeout(() => verifyFileOnDrive(filename, retry + 1), 2000);
+            } else {
+                isUploading = false;
+                document.getElementById('uploadProgressContainer').style.display = 'none';
+            }
+        });
 }
 
 function removeUploadedVideo() {
@@ -590,10 +660,10 @@ function renderProductSelect() {
     const select = document.getElementById('san_pham');
     const currentValue = select.value;
     let html = '<option value="">-- Không đính kèm sản phẩm --</option>';
-    
+
     // Sort by name
-    const sorted = [...productList].sort((a,b) => a.name.localeCompare(b.name));
-    
+    const sorted = [...productList].sort((a, b) => a.name.localeCompare(b.name));
+
     sorted.forEach(p => {
         if (p.is_active || currentValue === p.id) {
             html += `<option value="${p.id}">${p.name} ${p.is_active ? '' : '(Ngừng bán)'}</option>`;
@@ -627,9 +697,9 @@ function handleAddProduct(e) {
     const idInput = document.getElementById('edit_product_id');
     const nameInput = document.getElementById('new_product_name');
     const activeInput = document.getElementById('new_product_active');
-    
+
     if (!nameInput.value.trim()) return;
-    
+
     const productData = {
         name: nameInput.value.trim(),
         is_active: activeInput.checked
@@ -658,7 +728,7 @@ function resetProductForm() {
     document.getElementById('btnCancelProductEdit').style.display = 'none';
 }
 
-window.editProduct = function(id) {
+window.editProduct = function (id) {
     const p = productList.find(x => x.id === id);
     if (p) {
         document.getElementById('edit_product_id').value = p.id;
@@ -670,11 +740,11 @@ window.editProduct = function(id) {
     }
 }
 
-window.toggleProductActive = function(id, currentStatus) {
+window.toggleProductActive = function (id, currentStatus) {
     productRef.child(id).update({ is_active: !currentStatus });
 }
 
-window.deleteProduct = function(id) {
+window.deleteProduct = function (id) {
     if (confirm("Xóa sản phẩm này sẽ ảnh hưởng tới các video đã chọn sản phẩm này. Bạn có chắc không?")) {
         productRef.child(id).remove();
     }
@@ -686,8 +756,8 @@ function renderProductList() {
         container.innerHTML = '<div style="padding:16px; text-align:center; color:#64748b;">Chưa có sản phẩm nào.</div>';
         return;
     }
-    
-    const sorted = [...productList].sort((a,b) => a.name.localeCompare(b.name));
+
+    const sorted = [...productList].sort((a, b) => a.name.localeCompare(b.name));
     let html = '<table style="width:100%; border-collapse: collapse;">';
     sorted.forEach(p => {
         html += `
