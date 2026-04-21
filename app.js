@@ -32,10 +32,35 @@ let videoList = [];
 let productList = [];
 let isUploading = false; // Cờ theo dõi trạng thái upload
 
+function requireDateAndProductSelectedBeforeAdd() {
+    const dateEl = document.getElementById('dateFilter');
+    const productEl = document.getElementById('productFilter');
+    const dateVal = (dateEl?.value || '').trim();
+    const productVal = (productEl?.value || '').trim();
+
+    if (!dateVal) {
+        showToast("Vui lòng chọn Ngày trước khi thêm video");
+        dateEl?.focus();
+        return false;
+    }
+    if (!productVal) {
+        showToast("Vui lòng chọn Sản phẩm trước khi thêm video");
+        productEl?.focus();
+        return false;
+    }
+    return true;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Nút Bật Form
-    document.getElementById('btnAddNew').addEventListener('click', () => openModal());
-    document.getElementById('btnAddNewFab').addEventListener('click', () => openModal());
+    document.getElementById('btnAddNew').addEventListener('click', () => {
+        if (!requireDateAndProductSelectedBeforeAdd()) return;
+        openModal();
+    });
+    document.getElementById('btnAddNewFab').addEventListener('click', () => {
+        if (!requireDateAndProductSelectedBeforeAdd()) return;
+        openModal();
+    });
 
     // Nút Đóng Form
     document.getElementById('btnCloseModal').addEventListener('click', closeModal);
@@ -47,8 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Xóa record
     document.getElementById('btnDeleteRecord').addEventListener('click', handleDeleteRecord);
 
-    // Tìm kiếm và lọc
-    document.getElementById('searchInput').addEventListener('input', renderList);
+    // Lọc
     document.getElementById('statusFilter').addEventListener('change', renderList);
     document.getElementById('productFilter').addEventListener('change', renderList);
     document.getElementById('dateFilter').addEventListener('change', renderList);
@@ -68,8 +92,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnStartRecording').addEventListener('click', startRecording);
     document.getElementById('btnStopRecording').addEventListener('click', stopRecording);
 
-    // Set Default ngày đăng
+    // Set Default ngày (filter + form)
     const today = new Date().toISOString().split('T')[0];
+    const dateFilter = document.getElementById('dateFilter');
+    if (dateFilter && !dateFilter.value) dateFilter.value = today;
     document.getElementById('ngay_dang').value = today;
 
     // Quản lý sản phẩm
@@ -103,7 +129,7 @@ function fetchData() {
 function renderList() {
     const container = document.getElementById('videoListContainer');
     const noData = document.getElementById('noDataState');
-    const searchVal = document.getElementById('searchInput').value.toLowerCase();
+    const resultCountEl = document.getElementById('resultCount');
     const statusVal = document.getElementById('statusFilter').value;
     const productVal = document.getElementById('productFilter').value;
     const dateVal = document.getElementById('dateFilter').value;
@@ -115,7 +141,6 @@ function renderList() {
     videoList.forEach(item => {
         // Lọc
         const safeTitle = (item.tieu_de || '').toString();
-        if (searchVal && !safeTitle.toLowerCase().includes(searchVal)) return;
         if (statusVal && item.trang_thai !== statusVal) return;
         if (productVal && item.san_pham !== productVal) return;
 
@@ -181,7 +206,7 @@ function renderList() {
                         ? `
                             ${outputView ? `<a class="video-link-mini" href="${outputView}" target="_blank">Thành phẩm</a>` : ``}
                             ${outputDl ? `<a class="video-link-mini" href="${outputDl}" target="_blank" style="margin-left:8px;">Tải</a>` : ``}
-                            <button type="button" class="icon-btn" title="Share lên điện thoại" style="margin-left:8px;" onclick="shareOutputLink('${escapeHtml(shareUrl)}','${escapeHtml(safeTitle)}')">
+                            <button type="button" class="icon-btn" title="Share video lên điện thoại" style="margin-left:8px;" onclick="shareOutputLink('${escapeHtml(shareUrl)}','${escapeHtml(safeTitle)}','${escapeHtml((item.output_ten_file || 'video_tiktok.mp4').toString())}')">
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/>
                                     <path d="M16 6l-4-4-4 4"/>
@@ -304,6 +329,10 @@ function renderList() {
         container.style.display = 'none';
         noData.style.display = 'block';
     }
+
+    if (resultCountEl) {
+        resultCountEl.textContent = `Tổng: ${count} video`;
+    }
 }
 
 function formatDate(dateStr) {
@@ -379,23 +408,41 @@ window.editRecord = function (id) {
     if (item) openModal(item);
 }
 
-window.shareOutputLink = async function (url, title) {
+window.shareOutputLink = async function (url, title, fileName) {
     const u = (url || '').toString().trim();
     if (!u) {
         showToast("Chưa có link thành phẩm để share");
         return;
     }
     const t = (title || '').toString().trim() || "Video TikTok";
+    const fn = (fileName || '').toString().trim() || "video_tiktok.mp4";
+
+    // Try to share the actual MP4 file (best for TikTok).
     try {
-        if (navigator.share) {
-            await navigator.share({ title: t, text: t, url: u });
-            return;
+        if (navigator.share && navigator.canShare) {
+            const res = await fetch(u);
+            const blob = await res.blob();
+            const file = new File([blob], fn.endsWith(".mp4") ? fn : `${fn}.mp4`, { type: blob.type || "video/mp4" });
+            if (navigator.canShare({ files: [file] })) {
+                await navigator.share({ title: t, text: t, files: [file] });
+                return;
+            }
         }
     } catch (err) {
-        // User cancelled share or share failed; fall back to copy.
+        // Common reason: Google Drive download blocked by CORS in browser fetch.
         console.warn(err);
     }
 
+    // Fallback: open download link so user can save to phone, then share/upload in TikTok.
+    try {
+        window.open(u, "_blank");
+        showToast("Mở link tải — lưu video về máy rồi đăng TikTok");
+        return;
+    } catch (err) {
+        console.warn(err);
+    }
+
+    // Last fallback: copy link.
     try {
         await navigator.clipboard.writeText(u);
         showToast("Đã copy link thành phẩm!");
@@ -499,7 +546,18 @@ let recordingTimerInterval;
 
 async function openRecordingModal() {
     try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: true });
+        // Prefer TikTok 9:16 capture when the device supports it.
+        // Some devices may ignore these constraints; UI still uses 9:16 preview crop.
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: "environment",
+                aspectRatio: 9 / 16,
+                width: { ideal: 1080 },
+                height: { ideal: 1920 },
+                frameRate: { ideal: 30 }
+            },
+            audio: true
+        });
         document.getElementById('recordPreview').srcObject = stream;
         document.getElementById('recordingModal').classList.add('show');
         resetRecordingUI();
@@ -917,7 +975,13 @@ function renderProductSelect() {
         filterHtml += `<option value="${p.id}">${p.name}</option>`;
     });
     filterSelect.innerHTML = filterHtml;
-    filterSelect.value = currentFilterVal;
+    // Default: chọn sản phẩm đầu tiên nếu chưa chọn gì
+    if (currentFilterVal) {
+        filterSelect.value = currentFilterVal;
+    } else {
+        const firstActive = sorted.find(p => p && p.id);
+        filterSelect.value = firstActive ? firstActive.id : '';
+    }
 }
 
 function openProductModal() {
