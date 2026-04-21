@@ -144,13 +144,13 @@ button {
     -webkit-overflow-scrolling: touch;
 }
 
-.search-filter-container {
+/* Desktop: one line */
+.topbar-grid {
     display: flex;
     gap: 8px;
     flex: 1;
-    max-width: 700px;
-    flex-wrap: nowrap;
     align-items: center;
+    min-width: 0;
 }
 
 /* Icon-only "Add" button */
@@ -162,14 +162,42 @@ button {
     margin: 0;
 }
 
-/* Make topbar controls distribute nicely */
-.search-filter-container > .filter-select {
+/* Make topbar controls distribute nicely (desktop) */
+.topbar-grid > .filter-select {
     flex: 1;
     min-width: 160px;
 }
-.search-filter-container > .filter-date-wrapper {
+.topbar-grid > .filter-date-wrapper {
     flex: 1;
     min-width: 190px;
+}
+
+/* Mobile: 2 rows x 2 cols
+   Row 1: [btnManageProducts] [statusFilter]
+   Row 2: [productFilter]     [dateFilter]
+*/
+@media (max-width: 768px) {
+    .topbar {
+        overflow-x: visible;
+        flex-wrap: wrap;
+        align-items: stretch;
+    }
+    .topbar-grid {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+    #btnManageProducts { grid-column: 1; grid-row: 1; }
+    #statusFilter { grid-column: 2; grid-row: 1; }
+    #productFilter { grid-column: 1; grid-row: 2; }
+    .topbar-grid .filter-date-wrapper { grid-column: 2; grid-row: 2; }
+    .topbar-grid > .filter-select,
+    .topbar-grid > .filter-date-wrapper {
+        min-width: 0;
+        width: 100%;
+        flex: unset;
+    }
 }
 
 .filter-select {
@@ -375,6 +403,17 @@ button {
     color: var(--primary);
 }
 
+.icon-btn-danger {
+    border-color: #fecaca;
+    background: #fff;
+    color: #b91c1c;
+}
+.icon-btn-danger:hover {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fca5a5;
+}
+
 .icon-btn svg {
     width: 16px;
     height: 16px;
@@ -572,6 +611,16 @@ button {
     position: relative;
     max-height: 95vh;
     overflow-y: auto;
+}
+
+/* Quick create mode: focus on recording/upload */
+.modal.quick-create #group_tieu_de,
+.modal.quick-create #group_ngay_trang_thai > div:nth-child(2),
+.modal.quick-create #group_ghi_chu {
+    display: none;
+}
+.modal.quick-create .upload-section {
+    margin-top: 6px;
 }
 
 @media (max-width: 600px) {
@@ -866,12 +915,6 @@ button {
 @media (max-width: 768px) {
     .grid-2-col {
         grid-template-columns: 1fr;
-    }
-    .topbar {
-        flex-direction: column-reverse;
-    }
-    .search-filter-container {
-        max-width: 100%;
     }
     .header-actions {
         width: 100%;

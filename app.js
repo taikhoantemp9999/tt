@@ -16,10 +16,11 @@ if (!firebase.apps.length) {
 const database = firebase.database();
 const tiktokRef = database.ref('tiktok_videos');
 const productRef = database.ref('tiktok_products');
+const metaRef = database.ref('tiktok_meta');
 
 // === CONFIG APPS SCRIPT URL TẠI ĐÂY ===
 // Sử dụng URL apps script user cung cấp
-const APPS_SCRIPT_UPLOAD_VIDEO_URL = "https://script.google.com/macros/s/AKfycbwCqKlwoNg9y-sPnkC2Lpud3c1aTFs5Nr-knSfxs9cUe2xKLgs5CkIVN-Sx3rUGEZXu4g/exec";
+const APPS_SCRIPT_UPLOAD_VIDEO_URL = "https://script.google.com/macros/s/AKfycbzBvbwznFVcsX1dgw1kaoOgLvFKnL6QZ-WmMYblcyNd7PB-w-xN076Feh9rasHX3v6SwA/exec";
 // ======================================
 
 // === CONFIG THƯ MỤC DRIVE TRÊN MÁY (Drive for desktop) ===
@@ -31,6 +32,22 @@ const LOCAL_DRIVE_VIDEO_DIR = "G:\\My Drive\\TikTok Video Uploader";
 let videoList = [];
 let productList = [];
 let isUploading = false; // Cờ theo dõi trạng thái upload
+let lastUploadSource = ''; // 'record' | 'file' | ''
+
+function allocNextStt() {
+    // Atomic increment: tiktok_meta/next_stt = (current||0) + 1
+    return new Promise((resolve, reject) => {
+        metaRef.child('next_stt').transaction(
+            (cur) => (typeof cur === 'number' ? cur + 1 : 1),
+            (error, committed, snapshot) => {
+                if (error) return reject(error);
+                if (!committed) return reject(new Error("Không cấp được STT (transaction not committed)"));
+                const val = snapshot && snapshot.val();
+                resolve(typeof val === 'number' ? val : 0);
+            }
+        );
+    });
+}
 
 function requireDateAndProductSelectedBeforeAdd() {
     const dateEl = document.getElementById('dateFilter');
@@ -198,6 +215,15 @@ function renderList() {
                             <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
                         </svg>
                     </button>
+                    <button type="button" class="icon-btn icon-btn-danger" title="Xóa video" onclick="deleteRecordAndFiles('${item.id}')">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 6h18"></path>
+                            <path d="M8 6V4h8v2"></path>
+                            <path d="M19 6l-1 14H6L5 6"></path>
+                            <path d="M10 11v6"></path>
+                            <path d="M14 11v6"></path>
+                        </svg>
+                    </button>
                 </div>
 
                 <div class="video-side-row">
@@ -349,6 +375,7 @@ function openModal(item = null) {
     const form = document.getElementById('videoForm');
     form.reset();
 
+    const modalEl = document.getElementById('formModal');
     document.getElementById('editId').value = '';
     document.getElementById('modalTitle').innerText = 'Thêm Video Mới';
     document.getElementById('btnDeleteRecord').style.display = 'none';
@@ -362,7 +389,14 @@ function openModal(item = null) {
     const filterProduct = document.getElementById('productFilter').value;
     document.getElementById('san_pham').value = filterProduct || '';
 
+    // Default trạng thái khi tạo mới: Chờ đăng (tool xử lý xong sẽ đẩy về chờ đăng)
+    document.getElementById('trang_thai').value = 'Chờ đăng';
+
+    // Quick-create UI (ẩn các trường không cần khi đang quay)
+    if (modalEl) modalEl.classList.add('quick-create');
+
     if (item) {
+        if (modalEl) modalEl.classList.remove('quick-create');
         document.getElementById('modalTitle').innerText = 'Cập nhật Video';
         document.getElementById('editId').value = item.id;
         document.getElementById('tieu_de').value = item.tieu_de || '';
@@ -456,6 +490,7 @@ window.shareOutputLink = async function (url, title, fileName) {
 function handleFileSelection(e) {
     const file = e.target.files[0];
     if (!file) return;
+    lastUploadSource = 'file';
 
     // Kiểm tra dung lượng (~35MB là an toàn cho Apps Script Base64)
     if (file.size > 36000000) {
@@ -583,7 +618,7 @@ function resetRecordingUI() {
     document.getElementById('btnStopRecording').style.display = 'none';
     document.getElementById('recordingIndicator').style.display = 'none';
     document.getElementById('recordingTimer').innerText = '00:00';
-    document.getElementById('recordingStatusText').innerText = 'Sẵn sàng quay (Tối thiểu 20s, Tối đa 30s)';
+    document.getElementById('recordingStatusText').innerText = 'Sẵn sàng quay (Tối đa 20s)';
 }
 
 function startRecording() {
@@ -602,8 +637,8 @@ function startRecording() {
 
     document.getElementById('btnStartRecording').style.display = 'none';
     document.getElementById('btnStopRecording').style.display = 'flex';
-    document.getElementById('btnStopRecording').style.opacity = '0.5'; // Mờ đi khi chưa đủ 20s
-    document.getElementById('btnStopRecording').disabled = true;
+    document.getElementById('btnStopRecording').style.opacity = '1';
+    document.getElementById('btnStopRecording').disabled = false;
     document.getElementById('recordingIndicator').style.display = 'flex';
 
     recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
@@ -623,15 +658,10 @@ function updateRecordingTimer() {
     const secs = (elapsed % 60).toString().padStart(2, '0');
     document.getElementById('recordingTimer').innerText = `${mins}:${secs}`;
 
-    if (elapsed >= 20) {
-        document.getElementById('btnStopRecording').style.opacity = '1';
-        document.getElementById('btnStopRecording').disabled = false;
-        document.getElementById('recordingStatusText').innerText = 'Có thể dừng quay ngay bây giờ';
-    } else {
-        document.getElementById('recordingStatusText').innerText = `Quay thêm ${20 - elapsed}s nữa để có thể dừng`;
-    }
+    const remain = Math.max(0, 20 - elapsed);
+    document.getElementById('recordingStatusText').innerText = remain > 0 ? `Tự dừng sau ${remain}s` : 'Đang dừng...';
 
-    if (elapsed >= 30) {
+    if (elapsed >= 20) {
         stopRecording();
     }
 }
@@ -656,6 +686,7 @@ function handleRecordingStopped() {
 }
 
 function uploadRecordedFile(file) {
+    lastUploadSource = 'record';
     // Hiển thị thanh Upload
     document.getElementById('uploadDropZone').style.display = 'none';
     document.getElementById('uploadProgressContainer').style.display = 'block';
@@ -758,30 +789,83 @@ function updateUIWithFile(fileId, fileName) {
         });
     } else {
         // Tạo mới: nếu chưa có record nào (editId trống) thì tạo record nháp để lưu ngay tên file vào DB
-        const payload = {
-            tieu_de: computeDefaultTitleIfEmpty(document.getElementById('tieu_de')?.value),
-            san_pham: document.getElementById('san_pham')?.value || '',
-            ngay_dang: document.getElementById('ngay_dang')?.value || new Date().toISOString().split('T')[0],
-            trang_thai: document.getElementById('trang_thai')?.value || 'Video gốc',
-            ghi_chu: (document.getElementById('ghi_chu')?.value || '').trim(),
-            link_video: resultUrl,
-            link_video_download: downloadUrl,
-            ten_file: fileName,
-            drive_file_id: fileId,
-            local_video_path: localVideoPath,
-            cap_nhat_cuoi: new Date().toISOString()
-        };
+        allocNextStt().then((stt) => {
+            const payload = {
+                stt,
+                tieu_de: computeDefaultTitleIfEmpty(document.getElementById('tieu_de')?.value),
+                san_pham: document.getElementById('san_pham')?.value || '',
+                ngay_dang: document.getElementById('ngay_dang')?.value || new Date().toISOString().split('T')[0],
+                trang_thai: document.getElementById('trang_thai')?.value || 'Video gốc',
+                ghi_chu: (document.getElementById('ghi_chu')?.value || '').trim(),
+                link_video: resultUrl,
+                link_video_download: downloadUrl,
+                ten_file: fileName,
+                drive_file_id: fileId,
+                local_video_path: localVideoPath,
+                cap_nhat_cuoi: new Date().toISOString()
+            };
 
-        tiktokRef.push(payload).then((ref) => {
+            return tiktokRef.push(payload);
+        }).then((ref) => {
             document.getElementById('editId').value = ref.key;
             document.getElementById('modalTitle').innerText = 'Cập nhật Video';
             document.getElementById('btnDeleteRecord').style.display = 'inline-block';
             showToast("Upload xong: đã tạo record & lưu tên file!");
+
+            // Nếu đang ở chế độ quay nhanh (record) thì tự lưu & tự đóng form luôn
+            if (lastUploadSource === 'record') {
+                setTimeout(() => closeModal(), 250);
+            }
         }).catch((err) => {
             console.error(err);
             alert("Upload xong nhưng không tạo được record: " + (err?.message || err));
         });
     }
+}
+
+async function deleteDriveFileById(fileId) {
+    const fid = (fileId || '').toString().trim();
+    if (!fid) return;
+    const res = await fetch(APPS_SCRIPT_UPLOAD_VIDEO_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'delete', fileId: fid })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!data || data.success !== true) {
+        throw new Error(data?.error || 'Không xóa được file trên Drive (Apps Script chưa hỗ trợ action=delete?)');
+    }
+}
+
+window.deleteRecordAndFiles = async function (id) {
+    const videoId = (id || '').toString().trim();
+    const item = videoList.find(i => i.id === videoId);
+    if (!videoId || !item) return;
+
+    const name = (item.tieu_de || item.ten_file || 'video').toString();
+    if (!confirm(`Xóa video này?\n- Sẽ xóa record trong DB\n- Sẽ xóa file gốc + thành phẩm trên Drive (nếu có)\n\n${name}`)) return;
+
+    try {
+        // Xóa file gốc (nếu có)
+        if (item.drive_file_id) {
+            await deleteDriveFileById(item.drive_file_id);
+        }
+        // Xóa file thành phẩm (nếu có)
+        if (item.output_drive_file_id) {
+            await deleteDriveFileById(item.output_drive_file_id);
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Lỗi xóa file trên Drive: " + (err?.message || err));
+        return;
+    }
+
+    // Cuối cùng xóa record
+    tiktokRef.child(videoId).remove().then(() => {
+        showToast("Đã xóa record + file Drive!");
+    }).catch((err) => {
+        console.error(err);
+        alert("Đã xóa file Drive nhưng lỗi xóa record DB: " + (err?.message || err));
+    });
 }
 
 /**
@@ -905,14 +989,16 @@ function handleSaveVideo(e) {
             });
     } else {
         // Thêm mới
-        tiktokRef.push(payload)
-            .then(() => {
-                showToast("Đã tạo mới!");
-                closeModal();
-            }).finally(() => {
-                submitBtn.innerHTML = '💾 Lưu lại';
-                submitBtn.disabled = false;
-            });
+        allocNextStt().then((stt) => {
+            payload.stt = stt;
+            return tiktokRef.push(payload);
+        }).then(() => {
+            showToast("Đã tạo mới!");
+            closeModal();
+        }).finally(() => {
+            submitBtn.innerHTML = '💾 Lưu lại';
+            submitBtn.disabled = false;
+        });
     }
 }
 

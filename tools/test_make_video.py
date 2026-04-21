@@ -428,7 +428,7 @@ def parse_args() -> argparse.Namespace:
     )
     ap.add_argument("--video-id", default="", help="tiktok_videos/{id}. If empty: pick latest 'Video gốc'")
     ap.add_argument("--status", default="Video gốc", help="Status to auto-pick when --video-id empty")
-    ap.add_argument("--out-dir", default="tools/out", help="Output base dir")
+    ap.add_argument("--out-dir", default="tools/out_all", help="Output base dir (single folder for easy upload)")
     ap.add_argument("--work-dir", default="tools/work", help="Working dir for downloads/cache")
     ap.add_argument(
         "--apps-script-url",
@@ -495,11 +495,18 @@ def main() -> int:
 
         ten_file = (item.get("ten_file") or "").strip() or f"{video_id}.mp4"
         safe_base = Path(ten_file).stem
+        stt = item.get("stt")
+        stt_str = ""
+        try:
+            if stt is not None and str(stt).strip() != "":
+                stt_str = f"{int(stt):04d}_"
+        except Exception:
+            stt_str = ""
         job_work = work_dir / video_id
-        job_out = out_dir / video_id
         input_video = job_work / "input.mp4"
         tts_mp3 = job_work / "tts.mp3"
-        output_video = job_out / f"{safe_base}_tts.mp4"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        output_video = out_dir / f"{stt_str}{video_id}__{safe_base}_tts.mp4"
 
         print(f"[db] video_id={video_id} ten_file={ten_file}")
         video_url = guess_drive_download_url(item)
