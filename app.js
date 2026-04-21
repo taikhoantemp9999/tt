@@ -581,15 +581,9 @@ let recordingTimerInterval;
 
 async function openRecordingModal() {
     try {
-        // Prefer TikTok 9:16 capture when the device supports it.
-        // Some devices may ignore these constraints; UI still uses 9:16 preview crop.
         stream = await navigator.mediaDevices.getUserMedia({
             video: {
-                facingMode: "environment",
-                aspectRatio: 9 / 16,
-                width: { ideal: 1080 },
-                height: { ideal: 1920 },
-                frameRate: { ideal: 30 }
+                facingMode: "environment"
             },
             audio: true
         });
