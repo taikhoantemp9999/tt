@@ -389,8 +389,8 @@ function openModal(item = null) {
     const filterProduct = document.getElementById('productFilter').value;
     document.getElementById('san_pham').value = filterProduct || '';
 
-    // Default trạng thái khi tạo mới: Chờ đăng (tool xử lý xong sẽ đẩy về chờ đăng)
-    document.getElementById('trang_thai').value = 'Chờ đăng';
+    // Default trạng thái khi tạo mới: Video gốc
+    document.getElementById('trang_thai').value = 'Video gốc';
 
     // Quick-create UI (ẩn các trường không cần khi đang quay)
     if (modalEl) modalEl.classList.add('quick-create');
