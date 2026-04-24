@@ -253,6 +253,29 @@ def resolve_local_video_from_db(item: Dict[str, Any]) -> Optional[Path]:
     return cand if cand.exists() else None
 
 
+def detect_input_video_suffix(item: Dict[str, Any], default_ext: str = ".mp4") -> str:
+    """
+    Pick input extension from DB filename when available.
+    Supports webm/mp4/mov/mkv/... and falls back to .mp4.
+    """
+    raw_name = (item.get("ten_file") or "").strip()
+    ext = Path(raw_name).suffix.lower() if raw_name else ""
+    allowed = {
+        ".mp4",
+        ".webm",
+        ".mov",
+        ".mkv",
+        ".avi",
+        ".m4v",
+        ".3gp",
+        ".mpeg",
+        ".mpg",
+    }
+    if ext in allowed:
+        return ext
+    return default_ext
+
+
 def download_to_file(url: str, out_path: Path, timeout_s: int = 120) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with httpx.Client(timeout=timeout_s, follow_redirects=True) as client:
@@ -503,7 +526,8 @@ def main() -> int:
         except Exception:
             stt_str = ""
         job_work = work_dir / video_id
-        input_video = job_work / "input.mp4"
+        input_suffix = detect_input_video_suffix(item, default_ext=".mp4")
+        input_video = job_work / f"input{input_suffix}"
         tts_mp3 = job_work / "tts.mp3"
         out_dir.mkdir(parents=True, exist_ok=True)
         output_video = out_dir / f"{stt_str}{video_id}__{safe_base}_tts.mp4"
