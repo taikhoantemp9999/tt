@@ -65,9 +65,25 @@ def resolve_ffmpeg_bin(repo_root: Path, exe_name: str) -> str:
 
 
 def probe_duration_seconds(media_path: Path) -> int:
-    p = subprocess.run(
+    repo_root = Path(__file__).resolve().parents[1]
+    ffprobe_bin = resolve_ffmpeg_bin(repo_root, "ffprobe.exe")
+
+    def _to_pos_float(s: str) -> Optional[float]:
+        t = (s or "").strip()
+        if not t or t.upper() == "N/A":
+            return None
+        try:
+            v = float(t)
+            if math.isfinite(v) and v > 0:
+                return v
+        except Exception:
+            return None
+        return None
+
+    # 1) Try container duration.
+    p1 = subprocess.run(
         [
-            resolve_ffmpeg_bin(Path(__file__).resolve().parents[1], "ffprobe.exe"),
+            ffprobe_bin,
             "-v",
             "error",
             "-show_entries",
@@ -80,8 +96,68 @@ def probe_duration_seconds(media_path: Path) -> int:
         capture_output=True,
         text=True,
     )
-    dur = float(p.stdout.strip())
-    return int(math.ceil(dur))
+    d1 = _to_pos_float(p1.stdout)
+    if d1 is not None:
+        return int(math.ceil(d1))
+
+    # 2) Fallback to stream duration (some webm files don't expose format.duration).
+    p2 = subprocess.run(
+        [
+            ffprobe_bin,
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=duration",
+            "-of",
+            "default=nk=1:nw=1",
+            str(media_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    d2 = _to_pos_float(p2.stdout)
+    if d2 is not None:
+        return int(math.ceil(d2))
+
+    # 3) Fallback to duration_ts/time_base.
+    p3 = subprocess.run(
+        [
+            ffprobe_bin,
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=duration_ts,time_base",
+            "-of",
+            "default=nk=1:nw=1",
+            str(media_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    lines = [ln.strip() for ln in (p3.stdout or "").splitlines() if ln.strip()]
+    if len(lines) >= 2:
+        # output order: duration_ts then time_base (typically)
+        dur_ts = _to_pos_float(lines[0])
+        tb = lines[1]
+        if dur_ts is not None and "/" in tb:
+            try:
+                num, den = tb.split("/", 1)
+                num_f = float(num)
+                den_f = float(den)
+                if den_f != 0:
+                    d3 = dur_ts * (num_f / den_f)
+                    if d3 > 0:
+                        return int(math.ceil(d3))
+            except Exception:
+                pass
+
+    raise RuntimeError(f"Cannot probe duration for media: {media_path}")
 
 
 def ffmpeg_drawtext_escape_text(s: str) -> str:
@@ -105,7 +181,7 @@ def ffmpeg_filter_escape_path(p: Path) -> str:
     return s.replace(":", r"\:").replace("'", r"\'")
 
 
-def wrap_text_for_drawtext(text: str, max_chars_per_line: int = 26, max_lines: int = 3) -> str:
+def wrap_text_for_drawtext(text: str, max_chars_per_line: int = 26, max_lines: Optional[int] = None) -> str:
     """
     FFmpeg drawtext doesn't auto-wrap. We'll insert explicit newlines.
     Strategy: wrap by words, cap lines; if overflow, ellipsize last line.
@@ -155,16 +231,16 @@ def wrap_text_for_drawtext(text: str, max_chars_per_line: int = 26, max_lines: i
     lines: list[str] = []
     for part in parts:
         for l in wrap_one(part):
-            if len(lines) >= max_lines:
+            if max_lines is not None and len(lines) >= max_lines:
                 break
             lines.append(l)
-        if len(lines) >= max_lines:
+        if max_lines is not None and len(lines) >= max_lines:
             break
 
     # If there are still words left, ellipsize the last line.
     # Detect overflow: if manual parts produce more lines than allowed OR wrapping truncated.
     total_lines_possible = sum(len(wrap_one(p)) for p in parts)
-    if total_lines_possible > max_lines and lines:
+    if max_lines is not None and total_lines_possible > max_lines and lines:
         last = lines[-1].rstrip(". ")
         # Keep last line within budget (roughly)
         budget = max(8, max_chars_per_line - 1)
@@ -172,7 +248,7 @@ def wrap_text_for_drawtext(text: str, max_chars_per_line: int = 26, max_lines: i
             last = last[:budget].rstrip()
         lines[-1] = last + "…"
 
-    return "\n".join(lines[:max_lines])
+    return "\n".join(lines if max_lines is None else lines[:max_lines])
 
 
 def choose_fontsize(text: str, base: int = 48) -> int:
@@ -385,9 +461,15 @@ def render_video_with_tts_and_text(input_video: Path, tts_mp3: Path, text: str, 
     if not tts_mp3.exists():
         raise FileNotFoundError(tts_mp3)
 
-    dur_s = probe_duration_seconds(input_video)
-    wrapped = wrap_text_for_drawtext(text, max_chars_per_line=26, max_lines=3)
-    fontsize = choose_fontsize(text, base=48)
+    dur_s: Optional[int]
+    try:
+        dur_s = probe_duration_seconds(input_video)
+    except Exception:
+        # Some webm files (recorded from browser/camera) may have N/A duration metadata.
+        # Fallback: let ffmpeg stop at the shortest stream (video end).
+        dur_s = None
+    wrapped = wrap_text_for_drawtext(text, max_chars_per_line=26, max_lines=None)
+    fontsize = choose_fontsize(text, base=64)
 
     # Use textfile to avoid newline/escaping issues on Windows.
     # This also correctly handles Vietnamese text and manual breaks via '@'.
@@ -407,16 +489,18 @@ def render_video_with_tts_and_text(input_video: Path, tts_mp3: Path, text: str, 
 
     output_video.parent.mkdir(parents=True, exist_ok=True)
     repo_root = Path(__file__).resolve().parents[1]
-    run(
+    cmd = [
+        resolve_ffmpeg_bin(repo_root, "ffmpeg.exe"),
+        "-y",
+        "-i",
+        str(input_video),
+        "-i",
+        str(tts_mp3),
+    ]
+    if dur_s is not None:
+        cmd.extend(["-t", str(dur_s)])
+    cmd.extend(
         [
-            resolve_ffmpeg_bin(repo_root, "ffmpeg.exe"),
-            "-y",
-            "-i",
-            str(input_video),
-            "-i",
-            str(tts_mp3),
-            "-t",
-            str(dur_s),
             "-map",
             "0:v:0",
             "-map",
@@ -427,6 +511,8 @@ def render_video_with_tts_and_text(input_video: Path, tts_mp3: Path, text: str, 
             # If TTS audio is shorter, pad with silence so ffmpeg doesn't end early.
             "-af",
             "apad",
+            # If duration metadata is unavailable, stop at video end.
+            "-shortest",
             "-c:v",
             "libx264",
             "-crf",
@@ -440,6 +526,7 @@ def render_video_with_tts_and_text(input_video: Path, tts_mp3: Path, text: str, 
             str(output_video),
         ]
     )
+    run(cmd)
 
 
 def parse_args() -> argparse.Namespace:
@@ -497,104 +584,122 @@ def main() -> int:
                 return 0
             video_id = picked
 
-        item = fetch_video_by_id(client, db_url, video_id)
-        if not item:
-            raise RuntimeError(f"Video id not found: {video_id}")
-
-        title = (item.get("tieu_de") or "").strip()
-        if not title:
-            raise RuntimeError("Missing field tieu_de in DB")
-
-        # Mark processing (best-effort)
         try:
-            rtdb_patch(
-                client,
-                db_url,
-                f"tiktok_videos/{video_id}",
-                {"trang_thai": "Đang xử lý", "cap_nhat_cuoi": utc_now_iso()},
-            )
-        except Exception:
-            pass
+            item = fetch_video_by_id(client, db_url, video_id)
+            if not item:
+                raise RuntimeError(f"Video id not found: {video_id}")
 
-        ten_file = (item.get("ten_file") or "").strip() or f"{video_id}.mp4"
-        safe_base = Path(ten_file).stem
-        stt = item.get("stt")
-        stt_str = ""
-        try:
-            if stt is not None and str(stt).strip() != "":
-                stt_str = f"{int(stt):04d}_"
-        except Exception:
-            stt_str = ""
-        job_work = work_dir / video_id
-        input_suffix = detect_input_video_suffix(item, default_ext=".mp4")
-        input_video = job_work / f"input{input_suffix}"
-        tts_mp3 = job_work / "tts.mp3"
-        out_dir.mkdir(parents=True, exist_ok=True)
-        output_video = out_dir / f"{stt_str}{video_id}__{safe_base}_tts.mp4"
+            title = (item.get("tieu_de") or "").strip()
+            if not title:
+                raise RuntimeError("Missing field tieu_de in DB")
 
-        print(f"[db] video_id={video_id} ten_file={ten_file}")
-        video_url = guess_drive_download_url(item)
-        local_video = resolve_local_video_from_db(item)
-
-        def use_local() -> None:
-            if not local_video:
-                raise RuntimeError("local_video_path not found or file missing")
-            print(f"[local] video -> {local_video}")
-            input_video.parent.mkdir(parents=True, exist_ok=True)
-            input_video.write_bytes(local_video.read_bytes())
-
-        def download_drive() -> None:
-            if not video_url:
-                raise RuntimeError("Missing drive_file_id/link_video_download in DB")
-            print(f"[download] video -> {input_video}")
-            download_to_file(video_url, input_video, timeout_s=300)
-
-        # Default behavior: prefer downloading from Drive (so you don't need local files).
-        if args.prefer_local and local_video:
+            # Mark processing (best-effort)
             try:
-                use_local()
+                rtdb_patch(
+                    client,
+                    db_url,
+                    f"tiktok_videos/{video_id}",
+                    {"trang_thai": "Đang xử lý", "cap_nhat_cuoi": utc_now_iso()},
+                )
             except Exception:
-                download_drive()
-        else:
+                pass
+
+            ten_file = (item.get("ten_file") or "").strip() or f"{video_id}.mp4"
+            safe_base = Path(ten_file).stem
+            stt = item.get("stt")
+            stt_str = ""
             try:
-                download_drive()
-            except Exception as e:
-                print(f"[warn] drive download failed, trying local if available: {e}")
-                use_local()
+                if stt is not None and str(stt).strip() != "":
+                    stt_str = f"{int(stt):04d}_"
+            except Exception:
+                stt_str = ""
+            job_work = work_dir / video_id
+            input_suffix = detect_input_video_suffix(item, default_ext=".mp4")
+            input_video = job_work / f"input{input_suffix}"
+            tts_mp3 = job_work / "tts.mp3"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            output_video = out_dir / f"{stt_str}{video_id}__{safe_base}_tts.mp4"
 
-        print("[tts] create audio from title...")
-        audio_url = fpt_tts_create(args.fpt_api_key, title, voice=args.voice, speed=args.speed)
-        print(f"[tts] audio_url={audio_url}")
+            print(f"[db] video_id={video_id} ten_file={ten_file}")
+            video_url = guess_drive_download_url(item)
+            local_video = resolve_local_video_from_db(item)
 
-        print(f"[download] audio -> {tts_mp3}")
-        poll_download_audio(audio_url, tts_mp3, max_wait_s=120)
+            def use_local() -> None:
+                if not local_video:
+                    raise RuntimeError("local_video_path not found or file missing")
+                print(f"[local] video -> {local_video}")
+                input_video.parent.mkdir(parents=True, exist_ok=True)
+                input_video.write_bytes(local_video.read_bytes())
 
-        print(f"[ffmpeg] render -> {output_video}")
-        render_video_with_tts_and_text(input_video, tts_mp3, title, output_video)
+            def download_drive() -> None:
+                if not video_url:
+                    raise RuntimeError("Missing drive_file_id/link_video_download in DB")
+                print(f"[download] video -> {input_video}")
+                download_to_file(video_url, input_video, timeout_s=300)
 
-        print("[drive] upload output to Drive...")
-        out_drive_name = f"{safe_base}_tts.mp4"
-        out_file_id = upload_output_to_drive(args.apps_script_url, output_video, out_drive_name)
-        out_view = f"https://drive.google.com/file/d/{out_file_id}/view"
-        out_dl = f"https://drive.google.com/uc?id={out_file_id}&export=download"
+            # Default behavior: prefer downloading from Drive (so you don't need local files).
+            if args.prefer_local and local_video:
+                try:
+                    use_local()
+                except Exception:
+                    download_drive()
+            else:
+                try:
+                    download_drive()
+                except Exception as e:
+                    print(f"[warn] drive download failed, trying local if available: {e}")
+                    use_local()
 
-        patch = {
-            "trang_thai": "Chờ đăng",
-            "tts_text": title,
-            "tts_audio_url": audio_url,
-            "local_input_video_path": str(input_video),
-            "local_tts_mp3_path": str(tts_mp3),
-            "local_output_path": str(output_video),
-            "output_ten_file": out_drive_name,
-            "output_drive_file_id": out_file_id,
-            "output_link_video": out_view,
-            "output_link_video_download": out_dl,
-            "xu_ly_xong_luc": utc_now_iso(),
-        }
-        rtdb_patch(client, db_url, f"tiktok_videos/{video_id}", patch)
+            print("[tts] create audio from title...")
+            audio_url = fpt_tts_create(args.fpt_api_key, title, voice=args.voice, speed=args.speed)
+            print(f"[tts] audio_url={audio_url}")
 
-        print(f"Done: {output_video}")
-        return 0
+            print(f"[download] audio -> {tts_mp3}")
+            poll_download_audio(audio_url, tts_mp3, max_wait_s=120)
+
+            print(f"[ffmpeg] render -> {output_video}")
+            render_video_with_tts_and_text(input_video, tts_mp3, title, output_video)
+
+            print("[drive] upload output to Drive...")
+            out_drive_name = f"{safe_base}_tts.mp4"
+            out_file_id = upload_output_to_drive(args.apps_script_url, output_video, out_drive_name)
+            out_view = f"https://drive.google.com/file/d/{out_file_id}/view"
+            out_dl = f"https://drive.google.com/uc?id={out_file_id}&export=download"
+
+            patch = {
+                "trang_thai": "Chờ đăng",
+                "tts_text": title,
+                "tts_audio_url": audio_url,
+                "local_input_video_path": str(input_video),
+                "local_tts_mp3_path": str(tts_mp3),
+                "local_output_path": str(output_video),
+                "output_ten_file": out_drive_name,
+                "output_drive_file_id": out_file_id,
+                "output_link_video": out_view,
+                "output_link_video_download": out_dl,
+                "xu_ly_xong_luc": utc_now_iso(),
+            }
+            rtdb_patch(client, db_url, f"tiktok_videos/{video_id}", patch)
+
+            print(f"Done: {output_video}")
+            return 0
+        except Exception as e:
+            # On any processing failure, rollback status so next run starts from scratch.
+            err_msg = str(e)
+            try:
+                rtdb_patch(
+                    client,
+                    db_url,
+                    f"tiktok_videos/{video_id}",
+                    {
+                        "trang_thai": "Video gốc",
+                        "xu_ly_log": err_msg[:2000],
+                        "cap_nhat_cuoi": utc_now_iso(),
+                    },
+                )
+            except Exception:
+                pass
+            raise
 
 
 if __name__ == "__main__":
