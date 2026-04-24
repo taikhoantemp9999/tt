@@ -97,17 +97,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Xử lý upload UI
     const btnSelectVideo = document.getElementById('btnSelectVideo');
     const videoInput = document.getElementById('videoInput');
+    const nativeVideoInput = document.getElementById('nativeVideoInput');
     const btnRemoveVideo = document.getElementById('btnRemoveVideo');
 
     btnSelectVideo.addEventListener('click', () => videoInput.click());
     videoInput.addEventListener('change', handleFileSelection);
+    if (nativeVideoInput) nativeVideoInput.addEventListener('change', handleFileSelection);
     btnRemoveVideo.addEventListener('click', removeUploadedVideo);
-
-    // Xử lý Quay Video
-    document.getElementById('btnRecordVideoOpen').addEventListener('click', openRecordingModal);
-    document.getElementById('btnCloseRecordingModal').addEventListener('click', closeRecordingModal);
-    document.getElementById('btnStartRecording').addEventListener('click', startRecording);
-    document.getElementById('btnStopRecording').addEventListener('click', stopRecording);
 
     // Set Default ngày (filter + form)
     const today = new Date().toISOString().split('T')[0];
@@ -490,7 +486,7 @@ window.shareOutputLink = async function (url, title, fileName) {
 function handleFileSelection(e) {
     const file = e.target.files[0];
     if (!file) return;
-    lastUploadSource = 'file';
+    lastUploadSource = e.target.id === 'nativeVideoInput' ? 'record' : 'file';
 
     // Kiểm tra dung lượng (~35MB là an toàn cho Apps Script Base64)
     if (file.size > 36000000) {
@@ -567,173 +563,6 @@ function handleFileSelection(e) {
         .catch(err => {
             console.error(err);
             alert("Lỗi khởi tạo upload: " + err.message);
-            removeUploadedVideo();
-            isUploading = false;
-        });
-}
-
-// --- LOGIC QUAY VIDEO TRỰC TIẾP ---
-let mediaRecorder;
-let recordedChunks = [];
-let stream;
-let recordingStartTime;
-let recordingTimerInterval;
-
-async function openRecordingModal() {
-    try {
-        stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-                facingMode: "environment"
-            },
-            audio: true
-        });
-        document.getElementById('recordPreview').srcObject = stream;
-        document.getElementById('recordingModal').classList.add('show');
-        resetRecordingUI();
-    } catch (err) {
-        console.error(err);
-        alert("Không thể truy cập camera: " + err.message);
-    }
-}
-
-function closeRecordingModal() {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-        if (!confirm("Đang quay video, bạn có chắc muốn thoát?")) return;
-        stopRecording();
-    }
-    if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-    }
-    document.getElementById('recordingModal').classList.remove('show');
-}
-
-function resetRecordingUI() {
-    document.getElementById('btnStartRecording').style.display = 'flex';
-    document.getElementById('btnStopRecording').style.display = 'none';
-    document.getElementById('recordingIndicator').style.display = 'none';
-    document.getElementById('recordingTimer').innerText = '00:00';
-    document.getElementById('recordingStatusText').innerText = 'Sẵn sàng quay (Tối đa 20s)';
-}
-
-function startRecording() {
-    recordedChunks = [];
-    const options = { mimeType: getSupportedMimeType() };
-    mediaRecorder = new MediaRecorder(stream, options);
-
-    mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) recordedChunks.push(e.data);
-    };
-
-    mediaRecorder.onstop = handleRecordingStopped;
-
-    mediaRecorder.start();
-    recordingStartTime = Date.now();
-
-    document.getElementById('btnStartRecording').style.display = 'none';
-    document.getElementById('btnStopRecording').style.display = 'flex';
-    document.getElementById('btnStopRecording').style.opacity = '1';
-    document.getElementById('btnStopRecording').disabled = false;
-    document.getElementById('recordingIndicator').style.display = 'flex';
-
-    recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
-}
-
-function getSupportedMimeType() {
-    const types = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
-    for (let t of types) {
-        if (MediaRecorder.isTypeSupported(t)) return t;
-    }
-    return '';
-}
-
-function updateRecordingTimer() {
-    const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
-    const mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
-    const secs = (elapsed % 60).toString().padStart(2, '0');
-    document.getElementById('recordingTimer').innerText = `${mins}:${secs}`;
-
-    const remain = Math.max(0, 20 - elapsed);
-    document.getElementById('recordingStatusText').innerText = remain > 0 ? `Tự dừng sau ${remain}s` : 'Đang dừng...';
-
-    if (elapsed >= 20) {
-        stopRecording();
-    }
-}
-
-function stopRecording() {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-        clearInterval(recordingTimerInterval);
-    }
-}
-
-function handleRecordingStopped() {
-    const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType });
-    const file = new File([blob], `recorded_video_${Date.now()}.mp4`, { type: mediaRecorder.mimeType });
-
-    // Tự động đóng modal quay và chuyển sang luồng upload
-    if (stream) stream.getTracks().forEach(track => track.stop());
-    document.getElementById('recordingModal').classList.remove('show');
-
-    // Giả lập việc chọn file cho handleFileSelection (nhưng dùng Blob trực tiếp)
-    uploadRecordedFile(file);
-}
-
-function uploadRecordedFile(file) {
-    lastUploadSource = 'record';
-    // Hiển thị thanh Upload
-    document.getElementById('uploadDropZone').style.display = 'none';
-    document.getElementById('uploadProgressContainer').style.display = 'block';
-    const progressBar = document.getElementById('uploadProgressBar');
-    progressBar.style.width = '10%';
-    isUploading = true;
-
-    // Tính toán tên file: YYYYMMDD HHMMSS - Tên sản phẩm
-    const now = new Date();
-    const timeStr = `${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`;
-    const ngayDangRaw = document.getElementById('ngay_dang').value;
-    const ngayDangClean = ngayDangRaw.replace(/-/g, '');
-    const sanPhamId = document.getElementById('san_pham').value;
-    const sanPhamObj = productList.find(p => p.id === sanPhamId);
-    const sanPhamName = sanPhamObj ? sanPhamObj.name : "Không sản phẩm";
-    const finalFileName = `${ngayDangClean} ${timeStr} - ${sanPhamName}.mp4`;
-
-    // Bước 1: Khởi tạo phiên tương tự bộ chọn file
-    fetch(APPS_SCRIPT_UPLOAD_VIDEO_URL, {
-        method: 'POST',
-        body: JSON.stringify({
-            action: 'init',
-            filename: finalFileName,
-            mimeType: file.type
-        })
-    })
-        .then(res => res.json())
-        .then(initResult => {
-            if (!initResult.success) throw new Error(initResult.error);
-
-            const xhr = new XMLHttpRequest();
-            xhr.open('PUT', initResult.uploadUrl, true);
-
-            xhr.upload.onprogress = (e) => {
-                if (e.lengthComputable) {
-                    const percent = Math.round((e.loaded / e.total) * 90) + 10;
-                    progressBar.style.width = percent + '%';
-                }
-            };
-
-            xhr.onload = () => {
-                verifyFileOnDrive(finalFileName);
-            };
-
-            xhr.onerror = () => {
-                verifyFileOnDrive(finalFileName);
-            };
-
-            xhr.send(file);
-        })
-        .catch(err => {
-            console.error(err);
-            alert("Lỗi upload video vừa quay: " + err.message);
             removeUploadedVideo();
             isUploading = false;
         });

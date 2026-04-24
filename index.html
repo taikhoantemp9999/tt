@@ -127,15 +127,16 @@
                         <!-- File Input -->
                         <div class="upload-area" id="uploadDropZone">
                             <input type="file" id="videoInput" accept="video/*, .exe, .rar, .zip" style="display: none;">
+                            <input type="file" id="nativeVideoInput" accept="video/*" capture="environment" style="display: none;">
                             <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
                                 <button type="button" id="btnSelectVideo" class="secondary-btn">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                                     Chọn từ máy
                                 </button>
-                                <button type="button" id="btnRecordVideoOpen" class="primary-btn" style="background:#ef4444; box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.2);">
+                                <label for="nativeVideoInput" class="primary-btn" style="background:#ef4444; box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.2); cursor: pointer; display: flex; align-items: center; margin: 0;">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 6px;"><circle cx="12" cy="12" r="10"></circle></svg>
-                                    Quay Video Trực tiếp
-                                </button>
+                                    Quay Điện Thoại
+                                </label>
                             </div>
                             <div class="upload-info">Hỗ trợ các file (dưới 35MB). <br><span style="color:#ef4444; font-weight: 600;">Giới hạn upload qua GAS: ~35MB</span></div>
                         </div>
@@ -188,33 +189,6 @@
                         </div>
                     </div>
                 </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal Quay Video -->
-    <div id="recordingModal" class="modal">
-        <div class="modal-content" style="max-width: 800px; padding: 20px;">
-            <div class="modal-header">
-                <h2>Quay Video Trực Tiếp</h2>
-                <button class="close-btn" id="btnCloseRecordingModal">&times;</button>
-            </div>
-            <div class="modal-body" style="text-align:center;">
-                <div class="camera-container" style="position:relative; background:#000; border-radius:12px; overflow:hidden; aspect-ratio: 9/16; max-height: 60vh; margin: 0 auto 20px;">
-                    <video id="recordPreview" autoplay muted playsinline style="width:100%; height:100%; object-fit: cover;"></video>
-                    <div id="recordingIndicator" class="recording-dot" style="display:none;">REC</div>
-                    <div id="recordingTimer" style="position:absolute; bottom:20px; left:50%; transform:translateX(-50%); color:white; font-weight:bold; font-size:1.5rem; text-shadow:0 2px 4px rgba(0,0,0,0.5);">00:00</div>
-                </div>
-                
-                <div style="display:flex; justify-content:center; gap:15px;">
-                    <button type="button" id="btnStartRecording" class="primary-btn" style="background:#ef4444; width:80px; height:80px; border-radius:50%; padding:0; display:flex; align-items:center; justify-content:center;">
-                        <div style="width:30px; height:30px; background:white; border-radius:50%;"></div>
-                    </button>
-                    <button type="button" id="btnStopRecording" class="primary-btn" style="display:none; background:#1e293b; width:80px; height:80px; border-radius:50%; padding:0; display:flex; align-items:center; justify-content:center;">
-                        <div style="width:25px; height:25px; background:white; border-radius:4px;"></div>
-                    </button>
-                </div>
-                <p id="recordingStatusText" style="margin-top:15px; font-weight:500; color:var(--text-muted);">Sẵn sàng quay (Tối thiểu 20s, Tối đa 30s)</p>
             </div>
         </div>
     </div>
