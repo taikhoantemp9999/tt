@@ -175,6 +175,40 @@ async function getHdUserMediaStream() {
 let hdStream = null;
 let hdRecorder = null;
 let hdChunks = [];
+let hdTimerInterval = null;
+let hdStartAt = 0;
+
+function setHdTimerText(seconds = 0) {
+    const timerEl = document.getElementById('hdRecordingTimer');
+    if (!timerEl) return;
+    const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
+    const ss = String(seconds % 60).padStart(2, '0');
+    timerEl.textContent = `${mm}:${ss}`;
+}
+
+function clearHdTimer(reset = false) {
+    if (hdTimerInterval) {
+        clearInterval(hdTimerInterval);
+        hdTimerInterval = null;
+    }
+    if (reset) {
+        hdStartAt = 0;
+        setHdTimerText(0);
+    }
+}
+
+function startHdTimer() {
+    hdStartAt = Date.now();
+    clearHdTimer(false);
+    setHdTimerText(0);
+    hdTimerInterval = setInterval(() => {
+        const elapsedSec = Math.max(0, Math.floor((Date.now() - hdStartAt) / 1000));
+        setHdTimerText(elapsedSec);
+        if (elapsedSec >= 21 && hdRecorder && hdRecorder.state === 'recording') {
+            stopHdRecording();
+        }
+    }, 200);
+}
 
 async function openHdRecordingModal() {
     try {
@@ -187,6 +221,7 @@ async function openHdRecordingModal() {
         hdStream = await getHdUserMediaStream();
         preview.srcObject = hdStream;
         modal.classList.add('show');
+        clearHdTimer(true);
         if (startBtn) startBtn.style.display = 'inline-flex';
         if (stopBtn) stopBtn.style.display = 'none';
     } catch (err) {
@@ -205,6 +240,7 @@ function closeHdRecordingModal() {
         hdStream.getTracks().forEach(t => t.stop());
         hdStream = null;
     }
+    clearHdTimer(true);
     if (modal) modal.classList.remove('show');
 }
 
@@ -236,6 +272,7 @@ function startHdRecording() {
     };
 
     hdRecorder.onstop = async () => {
+        clearHdTimer(false);
         try {
             const blob = new Blob(hdChunks, { type: hdRecorder.mimeType || 'video/webm' });
             const ext = extFromMime(blob.type || hdRecorder.mimeType);
@@ -250,12 +287,14 @@ function startHdRecording() {
     };
 
     hdRecorder.start();
+    startHdTimer();
 }
 
 function stopHdRecording() {
     if (hdRecorder && hdRecorder.state !== 'inactive') {
         try { hdRecorder.stop(); } catch (_) { }
     }
+    clearHdTimer(false);
     const startBtn = document.getElementById('btnStartHdRecording');
     const stopBtn = document.getElementById('btnStopHdRecording');
     if (startBtn) startBtn.style.display = 'inline-flex';
