@@ -7,7 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
         // Version bump here when you deploy/update
-        window.APP_VERSION = "2026.04.24.2";
+        window.APP_VERSION = "2026.04.24.3";
         // Cache-bust local assets (no hard refresh needed)
         window.__assetVersion = window.APP_VERSION;
         document.write(`<link rel="stylesheet" href="style.css?v=${window.__assetVersion}">`);
@@ -250,6 +250,7 @@
                     <button type="button" id="btnStartHdRecording" class="primary-btn" style="background:#ef4444;">● Bắt đầu</button>
                     <button type="button" id="btnStopHdRecording" class="secondary-btn" style="display:none;">■ Dừng</button>
                 </div>
+                <div id="hdRecordingTimer" style="margin-top:8px; font-weight:800; font-size:1.15rem; color:#0f172a;">00:00</div>
                 <p id="hdRecordingHint" style="margin-top:10px; font-weight:600; color:var(--text-muted); font-size:0.9rem;">
                     Mẹo: nếu bị lỗi camera, hãy dùng “Quay Điện Thoại”.
                 </p>
