@@ -99,11 +99,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const videoInput = document.getElementById('videoInput');
     const nativeVideoInput = document.getElementById('nativeVideoInput');
     const btnRemoveVideo = document.getElementById('btnRemoveVideo');
+    const btnRecordHdOpen = document.getElementById('btnRecordHdOpen');
+    const btnCloseHdRecordingModal = document.getElementById('btnCloseHdRecordingModal');
+    const btnStartHdRecording = document.getElementById('btnStartHdRecording');
+    const btnStopHdRecording = document.getElementById('btnStopHdRecording');
 
     btnSelectVideo.addEventListener('click', () => videoInput.click());
     videoInput.addEventListener('change', handleFileSelection);
     if (nativeVideoInput) nativeVideoInput.addEventListener('change', handleFileSelection);
     btnRemoveVideo.addEventListener('click', removeUploadedVideo);
+
+    if (btnRecordHdOpen) btnRecordHdOpen.addEventListener('click', openHdRecordingModal);
+    if (btnCloseHdRecordingModal) btnCloseHdRecordingModal.addEventListener('click', closeHdRecordingModal);
+    if (btnStartHdRecording) btnStartHdRecording.addEventListener('click', startHdRecording);
+    if (btnStopHdRecording) btnStopHdRecording.addEventListener('click', stopHdRecording);
 
     // Set Default ngày (filter + form)
     const today = new Date().toISOString().split('T')[0];
@@ -121,6 +130,137 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchProducts();
     fetchData();
 });
+
+function extFromMime(mime) {
+    const m = (mime || '').toLowerCase();
+    if (m.includes('mp4')) return 'mp4';
+    if (m.includes('quicktime')) return 'mov';
+    if (m.includes('webm')) return 'webm';
+    return 'mp4';
+}
+
+function pickRecorderMimeType() {
+    const candidates = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+        'video/mp4'
+    ];
+    for (const c of candidates) {
+        try {
+            if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c;
+        } catch (_) { }
+    }
+    return '';
+}
+
+async function getHdUserMediaStream() {
+    const attempts = [
+        { video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: true },
+        { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: true },
+        { video: { facingMode: { ideal: "environment" } }, audio: true },
+        { video: true, audio: true }
+    ];
+    let lastErr;
+    for (const c of attempts) {
+        try {
+            return await navigator.mediaDevices.getUserMedia(c);
+        } catch (e) {
+            lastErr = e;
+        }
+    }
+    throw lastErr || new Error("Không lấy được camera stream");
+}
+
+let hdStream = null;
+let hdRecorder = null;
+let hdChunks = [];
+
+async function openHdRecordingModal() {
+    try {
+        const modal = document.getElementById('hdRecordingModal');
+        const preview = document.getElementById('hdRecordPreview');
+        const startBtn = document.getElementById('btnStartHdRecording');
+        const stopBtn = document.getElementById('btnStopHdRecording');
+        if (!modal || !preview) return;
+
+        hdStream = await getHdUserMediaStream();
+        preview.srcObject = hdStream;
+        modal.classList.add('show');
+        if (startBtn) startBtn.style.display = 'inline-flex';
+        if (stopBtn) stopBtn.style.display = 'none';
+    } catch (err) {
+        console.error(err);
+        alert("Không thể mở camera HD: " + (err?.message || err));
+    }
+}
+
+function closeHdRecordingModal() {
+    const modal = document.getElementById('hdRecordingModal');
+    if (hdRecorder && hdRecorder.state === 'recording') {
+        if (!confirm("Đang quay, bạn có chắc muốn thoát?")) return;
+        stopHdRecording();
+    }
+    if (hdStream) {
+        hdStream.getTracks().forEach(t => t.stop());
+        hdStream = null;
+    }
+    if (modal) modal.classList.remove('show');
+}
+
+function startHdRecording() {
+    if (!hdStream) return;
+    hdChunks = [];
+    const mimeType = pickRecorderMimeType();
+    const options = {
+        mimeType,
+        videoBitsPerSecond: 6_000_000, // ~6Mbps (HD)
+        audioBitsPerSecond: 128_000
+    };
+
+    try {
+        hdRecorder = new MediaRecorder(hdStream, mimeType ? options : { videoBitsPerSecond: options.videoBitsPerSecond, audioBitsPerSecond: options.audioBitsPerSecond });
+    } catch (err) {
+        console.error(err);
+        alert("Thiết bị không hỗ trợ quay HD trong web. Hãy dùng “Quay Điện Thoại”.");
+        return;
+    }
+
+    const startBtn = document.getElementById('btnStartHdRecording');
+    const stopBtn = document.getElementById('btnStopHdRecording');
+    if (startBtn) startBtn.style.display = 'none';
+    if (stopBtn) stopBtn.style.display = 'inline-flex';
+
+    hdRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) hdChunks.push(e.data);
+    };
+
+    hdRecorder.onstop = async () => {
+        try {
+            const blob = new Blob(hdChunks, { type: hdRecorder.mimeType || 'video/webm' });
+            const ext = extFromMime(blob.type || hdRecorder.mimeType);
+            const file = new File([blob], `record_hd_${Date.now()}.${ext}`, { type: blob.type });
+            lastUploadSource = 'record';
+            closeHdRecordingModal();
+            beginUploadFile(file);
+        } catch (err) {
+            console.error(err);
+            alert("Lỗi xử lý file quay HD: " + (err?.message || err));
+        }
+    };
+
+    hdRecorder.start();
+}
+
+function stopHdRecording() {
+    if (hdRecorder && hdRecorder.state !== 'inactive') {
+        try { hdRecorder.stop(); } catch (_) { }
+    }
+    const startBtn = document.getElementById('btnStartHdRecording');
+    const stopBtn = document.getElementById('btnStopHdRecording');
+    if (startBtn) startBtn.style.display = 'inline-flex';
+    if (stopBtn) stopBtn.style.display = 'none';
+}
 
 function fetchData() {
     document.getElementById('loadingState').style.display = 'block';
@@ -488,6 +628,11 @@ function handleFileSelection(e) {
     if (!file) return;
     lastUploadSource = e.target.id === 'nativeVideoInput' ? 'record' : 'file';
 
+    beginUploadFile(file);
+}
+
+function beginUploadFile(file) {
+
     // Kiểm tra dung lượng (~35MB là an toàn cho Apps Script Base64)
     if (file.size > 36000000) {
         alert("File này lớn hơn 35MB. Ứng dụng Google Apps Script cơ bản có thể gặp quá tải. Vui lòng thử nén video lại!");
@@ -512,7 +657,7 @@ function handleFileSelection(e) {
     const sanPhamObj = productList.find(p => p.id === sanPhamId);
     const sanPhamName = sanPhamObj ? sanPhamObj.name : "Không sản phẩm";
     
-    const extension = file.name.split('.').pop();
+    const extension = (file.name.split('.').pop() || extFromMime(file.type)).toString();
     const finalFileName = `${ngayDangClean} ${timeStr} - ${sanPhamName}.${extension}`;
 
     // Bước 1: Khởi tạo phiên tải lên (Init Session) qua Apps Script

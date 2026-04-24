@@ -6,8 +6,10 @@
     <title>TT - Quản lý Video TikTok</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
-        // Cache-bust local assets during dev (no hard refresh needed)
-        window.__assetVersion = Date.now().toString();
+        // Version bump here when you deploy/update
+        window.APP_VERSION = "2026.04.24.2";
+        // Cache-bust local assets (no hard refresh needed)
+        window.__assetVersion = window.APP_VERSION;
         document.write(`<link rel="stylesheet" href="style.css?v=${window.__assetVersion}">`);
     </script>
 
@@ -24,7 +26,7 @@
                 <p>Theo dõi lịch trình đăng và trạng thái edit video</p>
             </div>
             <div class="header-actions">
-                <span class="version-text" style="font-size: 0.85rem; color: #64748b; font-weight: 500; background: #f1f5f9; padding: 4px 8px; border-radius: 6px;">v1.0.1</span>
+                <span class="version-text" style="font-size: 0.85rem; color: #64748b; font-weight: 500; background: #f1f5f9; padding: 4px 8px; border-radius: 6px;" id="appVersionPill">v…</span>
             </div>
         </header>
 
@@ -128,7 +130,7 @@
                         <!-- File Input -->
                         <div class="upload-area" id="uploadDropZone">
                             <input type="file" id="videoInput" accept="video/*, .exe, .rar, .zip" style="display: none;">
-                            <input type="file" id="nativeVideoInput" accept="video/*" style="display: none;">
+                            <input type="file" id="nativeVideoInput" accept="video/*" capture="environment" style="display: none;">
                             <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
                                 <button type="button" id="btnSelectVideo" class="secondary-btn">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
@@ -138,6 +140,9 @@
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 6px;"><circle cx="12" cy="12" r="10"></circle></svg>
                                     Quay Điện Thoại
                                 </label>
+                                <button type="button" id="btnRecordHdOpen" class="secondary-btn" style="border-color:#c7d2fe; background:#eef2ff; color:#3730a3;">
+                                    Quay HD (Web)
+                                </button>
                             </div>
                             <div class="upload-info">Hỗ trợ các file (dưới 35MB). <br><span style="color:#ef4444; font-weight: 600;">Giới hạn upload qua GAS: ~35MB</span></div>
                         </div>
@@ -230,8 +235,37 @@
     <!-- Notification Toast -->
     <div id="toast" class="toast">Đã lưu thành công!</div>
 
+    <!-- Modal Quay HD (Web) -->
+    <div id="hdRecordingModal" class="modal">
+        <div class="modal-content" style="max-width: 720px; padding: 18px;">
+            <div class="modal-header">
+                <h2>Quay HD (Web)</h2>
+                <button class="close-btn" id="btnCloseHdRecordingModal">&times;</button>
+            </div>
+            <div class="modal-body" style="text-align:center;">
+                <div style="position:relative; background:#000; border-radius:12px; overflow:hidden; aspect-ratio: 9/16; max-height: 65vh; margin: 0 auto 14px;">
+                    <video id="hdRecordPreview" autoplay muted playsinline style="width:100%; height:100%; object-fit: cover;"></video>
+                </div>
+                <div style="display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
+                    <button type="button" id="btnStartHdRecording" class="primary-btn" style="background:#ef4444;">● Bắt đầu</button>
+                    <button type="button" id="btnStopHdRecording" class="secondary-btn" style="display:none;">■ Dừng</button>
+                </div>
+                <p id="hdRecordingHint" style="margin-top:10px; font-weight:600; color:var(--text-muted); font-size:0.9rem;">
+                    Mẹo: nếu bị lỗi camera, hãy dùng “Quay Điện Thoại”.
+                </p>
+            </div>
+        </div>
+    </div>
+
     <script>
         document.write(`<script src="app.js?v=${window.__assetVersion}"><\/script>`);
+    </script>
+    <script>
+        // Show current version in header
+        try {
+            const pill = document.getElementById('appVersionPill');
+            if (pill && window.APP_VERSION) pill.textContent = `v${window.APP_VERSION}`;
+        } catch (_) { }
     </script>
 </body>
 </html>
