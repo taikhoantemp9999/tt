@@ -366,8 +366,12 @@ function renderList() {
         const outputDl = (item.output_link_video_download || '').toString().trim();
         const hasOutput = !!(outputView || outputDl);
         const shareUrl = outputDl || outputView;
+        const sttText = item.stt ? String(item.stt).padStart(4, '0') : '----';
         row.innerHTML = `
             <div class="video-cell video-main">
+                <div style="display:flex; align-items:center;">
+                    <span class="stt-badge">#${sttText}</span>
+                </div>
                 <input class="quick-title-input" value="${escapeHtml(safeTitle)}" data-video-id="${item.id}" placeholder="Dán tiêu đề rồi nhấn Enter..." />
                 <div class="row-divider"></div>
                 <textarea class="quick-note-input" data-video-id="${item.id}" placeholder="Ghi chú (Enter để lưu & chuyển video tiếp theo, Shift+Enter để xuống dòng)">${escapeHtml(item.ghi_chu || '')}</textarea>
@@ -551,6 +555,9 @@ function openModal(item = null) {
     form.reset();
 
     const modalEl = document.getElementById('formModal');
+    const modalStt = document.getElementById('modalStt');
+    if (modalStt) modalStt.style.display = 'none';
+
     document.getElementById('editId').value = '';
     document.getElementById('modalTitle').innerText = 'Thêm Video Mới';
     document.getElementById('btnDeleteRecord').style.display = 'none';
@@ -579,6 +586,11 @@ function openModal(item = null) {
         document.getElementById('trang_thai').value = item.trang_thai || 'Video gốc';
         document.getElementById('ghi_chu').value = item.ghi_chu || '';
         document.getElementById('san_pham').value = item.san_pham || '';
+
+        if (item.stt && modalStt) {
+            modalStt.textContent = `#${String(item.stt).padStart(4, '0')}`;
+            modalStt.style.display = 'inline-flex';
+        }
 
         if (item.link_video) {
             document.getElementById('link_video').value = item.link_video;

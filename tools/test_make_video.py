@@ -12,9 +12,11 @@ from typing import Any, Dict, Optional, Tuple
 import httpx
 
 
-# NOTE: You asked to hardcode this for local-only usage.
-# If you ever share this file, rotate the key immediately.
+# NOTE: Hardcoded local config - edit these values directly.
+# If you ever share this file, rotate keys immediately.
 DEFAULT_FPT_TTS_API_KEY = "48HM12npAD38VYxgrFmuHhjBp9oPvsvt"
+DEFAULT_FPT_TTS_VOICE = "banmai"
+DEFAULT_FPT_TTS_SPEED = ""
 
 
 def utc_now_iso() -> str:
@@ -310,6 +312,24 @@ def pick_latest_job_id(client: httpx.Client, db_url: str, status: str = "Video g
     return best_id
 
 
+def pick_all_pending_job_ids(client: httpx.Client, db_url: str, status: str = "Video gốc") -> list[str]:
+    # Fetch all and filter locally.
+    jobs = rtdb_get(client, db_url, "tiktok_videos", params={})
+    results = []
+    for vid, item in jobs.items():
+        if not isinstance(item, dict):
+            continue
+        if (item.get("trang_thai") or "").strip() != status:
+            continue
+        ngay = (item.get("ngay_dang") or "").strip()
+        updated = (item.get("cap_nhat_cuoi") or "").strip()
+        results.append((vid, ngay, updated))
+
+    # Sort by date, then by update time (oldest first)
+    results.sort(key=lambda x: (x[1], x[2]))
+    return [r[0] for r in results]
+
+
 def guess_drive_download_url(item: Dict[str, Any]) -> Optional[str]:
     file_id = (item.get("drive_file_id") or "").strip()
     if file_id:
@@ -530,7 +550,7 @@ def render_video_with_tts_and_text(input_video: Path, tts_mp3: Path, text: str, 
 
 
 def parse_args() -> argparse.Namespace:
-    ap = argparse.ArgumentParser(description="Make TikTok video using RTDB fields + FPT TTS + ffmpeg.")
+    ap = argparse.ArgumentParser(description="Make TikTok video using RTDB fields + TTS provider + ffmpeg.")
     ap.add_argument(
         "--database-url",
         default=os.getenv("FIREBASE_DATABASE_URL", "https://english-fun-1937c-default-rtdb.firebaseio.com"),
@@ -555,12 +575,120 @@ def parse_args() -> argparse.Namespace:
     )
     ap.add_argument(
         "--fpt-api-key",
-        default=os.getenv("FPT_TTS_API_KEY", "").strip() or DEFAULT_FPT_TTS_API_KEY,
-        help="FPT TTS api-key (env recommended)",
+        default=DEFAULT_FPT_TTS_API_KEY,
+        help="FPT TTS api-key",
     )
-    ap.add_argument("--voice", default=os.getenv("FPT_TTS_VOICE", "banmai"), help="FPT voice")
-    ap.add_argument("--speed", default=os.getenv("FPT_TTS_SPEED", ""), help="FPT speed")
+    ap.add_argument("--voice", default=DEFAULT_FPT_TTS_VOICE, help="FPT voice")
+    ap.add_argument("--speed", default=DEFAULT_FPT_TTS_SPEED, help="FPT speed")
     return ap.parse_args()
+
+
+def process_single_video(
+    client: httpx.Client,
+    db_url: str,
+    video_id: str,
+    args: argparse.Namespace,
+    repo_root: Path,
+    out_dir: Path,
+    work_dir: Path,
+) -> None:
+    item = fetch_video_by_id(client, db_url, video_id)
+    if not item:
+        raise RuntimeError(f"Video id not found: {video_id}")
+
+    title = (item.get("tieu_de") or "").strip()
+    if not title:
+        raise RuntimeError("Missing field tieu_de in DB")
+
+    # Mark processing (best-effort)
+    try:
+        rtdb_patch(
+            client,
+            db_url,
+            f"tiktok_videos/{video_id}",
+            {"trang_thai": "Đang xử lý", "cap_nhat_cuoi": utc_now_iso()},
+        )
+    except Exception:
+        pass
+
+    ten_file = (item.get("ten_file") or "").strip() or f"{video_id}.mp4"
+    safe_base = Path(ten_file).stem
+    stt = item.get("stt")
+    stt_str = ""
+    try:
+        if stt is not None and str(stt).strip() != "":
+            stt_str = f"{int(stt):04d}_"
+    except Exception:
+        stt_str = ""
+    job_work = work_dir / video_id
+    input_suffix = detect_input_video_suffix(item, default_ext=".mp4")
+    input_video = job_work / f"input{input_suffix}"
+    tts_mp3 = job_work / "tts.mp3"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output_video = out_dir / f"{stt_str}{video_id}__{safe_base}_tts.mp4"
+
+    print(f"[db] video_id={video_id} ten_file={ten_file}")
+    video_url = guess_drive_download_url(item)
+    local_video = resolve_local_video_from_db(item)
+
+    def use_local() -> None:
+        if not local_video:
+            raise RuntimeError("local_video_path not found or file missing")
+        print(f"[local] video -> {local_video}")
+        input_video.parent.mkdir(parents=True, exist_ok=True)
+        input_video.write_bytes(local_video.read_bytes())
+
+    def download_drive() -> None:
+        if not video_url:
+            raise RuntimeError("Missing drive_file_id/link_video_download in DB")
+        print(f"[download] video -> {input_video}")
+        download_to_file(video_url, input_video, timeout_s=300)
+
+    # Default behavior: prefer downloading from Drive (so you don't need local files).
+    if args.prefer_local and local_video:
+        try:
+            use_local()
+        except Exception:
+            download_drive()
+    else:
+        try:
+            download_drive()
+        except Exception as e:
+            print(f"[warn] drive download failed, trying local if available: {e}")
+            use_local()
+
+    print("[tts] create audio from title with provider=fpt...")
+    audio_url = fpt_tts_create(args.fpt_api_key, title, voice=args.voice, speed=args.speed)
+    print(f"[tts] audio_url={audio_url}")
+
+    print(f"[download] audio -> {tts_mp3}")
+    poll_download_audio(audio_url, tts_mp3, max_wait_s=120)
+
+    print(f"[ffmpeg] render -> {output_video}")
+    render_video_with_tts_and_text(input_video, tts_mp3, title, output_video)
+
+    print("[drive] upload output to Drive...")
+    out_drive_name = f"{safe_base}_tts.mp4"
+    out_file_id = upload_output_to_drive(args.apps_script_url, output_video, out_drive_name)
+    out_view = f"https://drive.google.com/file/d/{out_file_id}/view"
+    out_dl = f"https://drive.google.com/uc?id={out_file_id}&export=download"
+
+    patch = {
+        "trang_thai": "Chờ đăng",
+        "tts_text": title,
+        "tts_provider": "fpt",
+        "tts_audio_url": audio_url,
+        "local_input_video_path": str(input_video),
+        "local_tts_mp3_path": str(tts_mp3),
+        "local_output_path": str(output_video),
+        "output_ten_file": out_drive_name,
+        "output_drive_file_id": out_file_id,
+        "output_link_video": out_view,
+        "output_link_video_download": out_dl,
+        "xu_ly_xong_luc": utc_now_iso(),
+    }
+    rtdb_patch(client, db_url, f"tiktok_videos/{video_id}", patch)
+    print(f"Done: {output_video}")
 
 
 def main() -> int:
@@ -569,137 +697,52 @@ def main() -> int:
     db_url = normalize_db_url(args.database_url)
 
     if not args.fpt_api_key:
-        raise RuntimeError("Missing FPT_TTS_API_KEY (pass --fpt-api-key or set env var)")
+        raise RuntimeError("Missing FPT key: edit DEFAULT_FPT_TTS_API_KEY or pass --fpt-api-key")
 
     repo_root = Path(__file__).resolve().parents[1]
     out_dir = (repo_root / args.out_dir).resolve()
     work_dir = (repo_root / args.work_dir).resolve()
 
     with httpx.Client(timeout=30, follow_redirects=True) as client:
-        video_id = (args.video_id or "").strip()
-        if not video_id:
-            picked = pick_latest_job_id(client, db_url, status=args.status)
-            if not picked:
+        video_id_arg = (args.video_id or "").strip()
+        if video_id_arg:
+            video_ids = [video_id_arg]
+        else:
+            print(f"Scanning for videos with status={args.status!r}...")
+            video_ids = pick_all_pending_job_ids(client, db_url, status=args.status)
+            if not video_ids:
                 print(f"No job found with status={args.status!r}")
                 return 0
-            video_id = picked
 
-        try:
-            item = fetch_video_by_id(client, db_url, video_id)
-            if not item:
-                raise RuntimeError(f"Video id not found: {video_id}")
+        print(f"Found {len(video_ids)} videos to process.")
+        success_count = 0
+        error_count = 0
 
-            title = (item.get("tieu_de") or "").strip()
-            if not title:
-                raise RuntimeError("Missing field tieu_de in DB")
-
-            # Mark processing (best-effort)
+        for i, video_id in enumerate(video_ids, start=1):
+            print(f"\n[{i}/{len(video_ids)}] Processing: {video_id}")
             try:
-                rtdb_patch(
-                    client,
-                    db_url,
-                    f"tiktok_videos/{video_id}",
-                    {"trang_thai": "Đang xử lý", "cap_nhat_cuoi": utc_now_iso()},
-                )
-            except Exception:
-                pass
-
-            ten_file = (item.get("ten_file") or "").strip() or f"{video_id}.mp4"
-            safe_base = Path(ten_file).stem
-            stt = item.get("stt")
-            stt_str = ""
-            try:
-                if stt is not None and str(stt).strip() != "":
-                    stt_str = f"{int(stt):04d}_"
-            except Exception:
-                stt_str = ""
-            job_work = work_dir / video_id
-            input_suffix = detect_input_video_suffix(item, default_ext=".mp4")
-            input_video = job_work / f"input{input_suffix}"
-            tts_mp3 = job_work / "tts.mp3"
-            out_dir.mkdir(parents=True, exist_ok=True)
-            output_video = out_dir / f"{stt_str}{video_id}__{safe_base}_tts.mp4"
-
-            print(f"[db] video_id={video_id} ten_file={ten_file}")
-            video_url = guess_drive_download_url(item)
-            local_video = resolve_local_video_from_db(item)
-
-            def use_local() -> None:
-                if not local_video:
-                    raise RuntimeError("local_video_path not found or file missing")
-                print(f"[local] video -> {local_video}")
-                input_video.parent.mkdir(parents=True, exist_ok=True)
-                input_video.write_bytes(local_video.read_bytes())
-
-            def download_drive() -> None:
-                if not video_url:
-                    raise RuntimeError("Missing drive_file_id/link_video_download in DB")
-                print(f"[download] video -> {input_video}")
-                download_to_file(video_url, input_video, timeout_s=300)
-
-            # Default behavior: prefer downloading from Drive (so you don't need local files).
-            if args.prefer_local and local_video:
+                process_single_video(client, db_url, video_id, args, repo_root, out_dir, work_dir)
+                success_count += 1
+            except Exception as e:
+                error_count += 1
+                err_msg = str(e)
+                print(f"Error processing {video_id}: {err_msg}")
                 try:
-                    use_local()
-                except Exception:
-                    download_drive()
-            else:
-                try:
-                    download_drive()
-                except Exception as e:
-                    print(f"[warn] drive download failed, trying local if available: {e}")
-                    use_local()
+                    rtdb_patch(
+                        client,
+                        db_url,
+                        f"tiktok_videos/{video_id}",
+                        {
+                            "trang_thai": "Lỗi xử lý",
+                            "xu_ly_log": err_msg[:2000],
+                            "cap_nhat_cuoi": utc_now_iso(),
+                        },
+                    )
+                except Exception as ex:
+                    print(f"Failed to update error status for {video_id}: {ex}")
 
-            print("[tts] create audio from title...")
-            audio_url = fpt_tts_create(args.fpt_api_key, title, voice=args.voice, speed=args.speed)
-            print(f"[tts] audio_url={audio_url}")
-
-            print(f"[download] audio -> {tts_mp3}")
-            poll_download_audio(audio_url, tts_mp3, max_wait_s=120)
-
-            print(f"[ffmpeg] render -> {output_video}")
-            render_video_with_tts_and_text(input_video, tts_mp3, title, output_video)
-
-            print("[drive] upload output to Drive...")
-            out_drive_name = f"{safe_base}_tts.mp4"
-            out_file_id = upload_output_to_drive(args.apps_script_url, output_video, out_drive_name)
-            out_view = f"https://drive.google.com/file/d/{out_file_id}/view"
-            out_dl = f"https://drive.google.com/uc?id={out_file_id}&export=download"
-
-            patch = {
-                "trang_thai": "Chờ đăng",
-                "tts_text": title,
-                "tts_audio_url": audio_url,
-                "local_input_video_path": str(input_video),
-                "local_tts_mp3_path": str(tts_mp3),
-                "local_output_path": str(output_video),
-                "output_ten_file": out_drive_name,
-                "output_drive_file_id": out_file_id,
-                "output_link_video": out_view,
-                "output_link_video_download": out_dl,
-                "xu_ly_xong_luc": utc_now_iso(),
-            }
-            rtdb_patch(client, db_url, f"tiktok_videos/{video_id}", patch)
-
-            print(f"Done: {output_video}")
-            return 0
-        except Exception as e:
-            # On any processing failure, rollback status so next run starts from scratch.
-            err_msg = str(e)
-            try:
-                rtdb_patch(
-                    client,
-                    db_url,
-                    f"tiktok_videos/{video_id}",
-                    {
-                        "trang_thai": "Video gốc",
-                        "xu_ly_log": err_msg[:2000],
-                        "cap_nhat_cuoi": utc_now_iso(),
-                    },
-                )
-            except Exception:
-                pass
-            raise
+        print(f"\nBatch finished. Success: {success_count}, Errors: {error_count}")
+        return 0 if error_count == 0 else 1
 
 
 if __name__ == "__main__":

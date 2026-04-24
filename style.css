@@ -363,6 +363,21 @@ button {
     outline: none;
 }
 
+.stt-badge {
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    border: 1px solid var(--border);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+}
+
 .quick-title-input:focus {
     border-color: var(--primary);
     background: #fff;
